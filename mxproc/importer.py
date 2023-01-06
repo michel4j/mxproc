@@ -16,10 +16,10 @@ def summarize_list(values: ArrayLike) -> Sequence[Tuple[int, int]]:
     :return: Sequence of Tuples.
     """
 
-    values = numpy.array(values)
+    values = numpy.array(values).astype(int)
     values.sort()
     return [
-        (chunk[0], chunk[-1])
+        (int(chunk[0]), int(chunk[-1]))
         for chunk in numpy.split(values, numpy.where(numpy.diff(values) > 1)[0] + 1)
         if len(chunk)
     ]
@@ -34,7 +34,8 @@ def load_experiment(filename: Union[str, Path]) -> Experiment:
     """
 
     dset = DataSet.new_from_file(filename)
-    dset.get_frame(index=dset.series[0])        # set to first frame so we get proper start angle
+    if dset.index != dset.series[0]:
+        dset.get_frame(index=dset.series[0])        # set to first frame so we get proper start angle
 
     return Experiment(
         name=dset.name,

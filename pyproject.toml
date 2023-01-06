@@ -14,7 +14,8 @@ classifiers = [
 requires-python = ">=3.9"
 dependencies = [
     "mxio",
-    "numpy"
+    "numpy",
+    "pyyaml",
 ]
 
 [project.urls]
