@@ -1,4 +1,7 @@
 import gzip
+import subprocess
+import sys
+
 from abc import ABC, abstractmethod
 from pathlib import Path
 from dataclasses import dataclass, asdict, field
@@ -8,7 +11,7 @@ import numpy
 import yaml
 from mxio import DataSet, XYPair
 from numpy.typing import ArrayLike
-
+from tqdm import tqdm
 
 @dataclass
 class Lattice:
@@ -230,3 +233,33 @@ def load_multiple(file_names: Sequence[Union[str, Path]]) -> Sequence[Experiment
         experiments[experiment.identifier] = experiment
 
     return list(experiments.values())
+
+
+def run_command(*args):
+    try:
+        # create a default tqdm progress bar object, unit='B' definnes a String that will be used to define the unit of each iteration in our case bytes
+        with tqdm(unit='B', unit_scale=True, miniters=1, desc="run_task={}".format(args)) as t:
+            process = subprocess.Popen(args, shell=True, bufsize=1, universal_newlines=True, stdout=subprocess.PIPE,
+                                       stderr=subprocess.PIPE)
+
+            # print subprocess output line-by-line as soon as its stdout buffer is flushed in Python 3:
+            for line in process.stdout:
+                # Update the progress, since we do not have a predefined iterator
+                # tqdm doesnt know before hand when to end and cant generate a progress bar
+                # hence elapsed time will be shown, this is good enough as we know
+                # something is in progress
+                t.update()
+                # forces stdout to "flush" the buffer
+                sys.stdout.flush()
+
+            process.stdout.close()
+
+            return_code = process.wait()
+
+            if return_code != 0:
+                raise subprocess.CalledProcessError(return_code, args)
+
+    except subprocess.CalledProcessError as e:
+        sys.stderr.write(
+            "common::run_command() : [ERROR]: output = %s, error code = %s\n"
+            % (e.output, e.returncode))

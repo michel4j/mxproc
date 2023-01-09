@@ -1,7 +1,7 @@
 import os
 import subprocess
 
-from mxproc import Analysis
+from mxproc import Analysis, run_command
 from mxproc.engines.xds import io
 
 
@@ -18,11 +18,9 @@ class XDSAnalysis(Analysis):
 
             os.chdir(self.options.working_directories[experiment.identifier])
 
-            io.create_input_file(('XYCORR', 'INIT'), experiment, io.XDSParameters(
+            io.create_input_file(('ALL',), experiment, io.XDSParameters(
                 data_range=(experiment.frames[0][0], experiment.frames[-1][1]),
                 spot_range=experiment.frames,
             ))
 
-            output = b""
-            with subprocess.Popen(['xds_par'], stdout=subprocess.PIPE) as proc:
-                output += proc.stdout.read()
+            run_command('xds_par')
