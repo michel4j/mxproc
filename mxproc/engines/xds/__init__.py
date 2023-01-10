@@ -1,5 +1,4 @@
 import os
-import subprocess
 
 from mxproc import Analysis, run_command
 from mxproc.engines.xds import io
