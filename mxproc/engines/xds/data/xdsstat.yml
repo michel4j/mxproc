@@ -1,0 +1,10 @@
+root:
+  sections:
+    diff_statistics:
+      domains: "([^\n]+? DIFFERENCE)"
+      table: "<int:frame_diff> <int:n_refl> <float:rd> <int:n_non_friedel> <float:rd_non_friedel> <int:n_friedel> <float:rd_friedel> DIFFERENCE"
+
+    frame_statistics:
+      domains: "([^\n]+? L)"
+      table: " <int:frame> <int:refs> <int:misfits> <int:iobs>. <float:sigma> <float:i_sigma> <float:peak> <float:corr> <float:r_meas> <int:n_r_meas> <int:unique> L"
+

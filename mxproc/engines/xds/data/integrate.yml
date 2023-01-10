@@ -1,0 +1,31 @@
+root:
+  fields:
+    - "!!! ERROR<str:error_code> !!! <str:failure>"
+  sections:
+    scale_factors:
+      domains: " IMAGE IER  SCALE     NBKG NOVL NEWALD NSTRONG  NREJ   SIGMAB   SIGMAR(.+?) REFINED PARAMETERS:"
+      table: " <int:frame:5>   <int:error:1> <float:scale:6> <int:background:8> <int:overloaded:4> <int:ewald:6> <int:strong:7> <int:rejected:5> <float:divergence:8> <float:mosaicity:8>"
+
+    batch_frames:
+      table: "PROCESSING OF IMAGES  <int:range> ... <int:range>"
+
+    batches:
+      table:
+        - " STANDARD DEVIATION OF SPOT    POSITION (PIXELS)  <float:stdev_spot>"
+        - " STANDARD DEVIATION OF SPINDLE POSITION (DEGREES) <float:stdev_spindle>"
+        - " SPACE GROUP NUMBER <int:spacegroup>"
+        - " UNIT CELL PARAMETERS  <float:unit_cell> <float:unit_cell> <float:unit_cell> <float:unit_cell> <float:unit_cell> <float:unit_cell>"
+        - " REC. CELL PARAMETERS  <float:rec_cell> <float:rec_cell> <float:rec_cell> <float:rec_cell> <float:rec_cell> <float:rec_cell>"
+        - " COORDINATES OF UNIT CELL A-AXIS <float:cell_a_axis> <float:cell_a_axis> <float:cell_a_axis>"
+        - " COORDINATES OF UNIT CELL B-AXIS <float:cell_b_axis> <float:cell_b_axis> <float:cell_b_axis>"
+        - " COORDINATES OF UNIT CELL C-AXIS <float:cell_c_axis> <float:cell_c_axis> <float:cell_c_axis>"
+        - " CRYSTAL ROTATION OFF FROM INITIAL ORIENTATION <float:crystal_rot> <float:crystal_rot> <float:crystal_rot>"
+        - " shown as x,y,z components of rotation axis X angle (degrees)"
+        - " CRYSTAL MOSAICITY (DEGREES) <float:mosaicity>"
+        - " LAB COORDINATES OF ROTATION AXIS <float:rotation_axis> <float:rotation_axis> <float:rotation_axis>"
+        - " DIRECT BEAM COORDINATES (REC. ANGSTROEM)  <float:direct_beam> <float:direct_beam> <float:direct_beam>"
+        - " DETECTOR COORDINATES (PIXELS) OF DIRECT BEAM  <float:beam_center> <float:beam_center>"
+        - " DETECTOR ORIGIN (PIXELS) AT                   <float:detector_origin> <float:detector_origin>"
+        - " CRYSTAL TO DETECTOR DISTANCE (mm)    <float:distance>"
+        - " LAB COORDINATES OF DETECTOR X-AXIS <float:detector_x_axis> <float:detector_x_axis> <float:detector_x_axis>"
+        - " LAB COORDINATES OF DETECTOR Y-AXIS <float:detector_y_axis> <float:detector_y_axis> <float:detector_y_axis>"

@@ -1,5 +1,7 @@
+import yaml
 from mxio import parser
 from enum import Enum
+from pathlib import Path
 
 
 class IndexFailure(Enum):
@@ -21,4 +23,18 @@ FAILURES = {
     r'CANNOT INDEX REFLECTIONS': IndexFailure.TERMINATED,
     r'^INSUFFICIENT PERCENTAGE .+ OF INDEXED REFLECTIONS': IndexFailure.LOW_FRACTION,
 }
+
+
+class XDSParsers:
+
+    @classmethod
+    def find_spots(cls):
+        spec_file = Path(__file__).parent / "data" / "spots.yml"
+        with open(spec_file, 'r') as file:
+            specs = yaml.safe_load(file)
+
+        log_file = Path("COLSPOT.LP")
+        info = parser.parse_file(log_file, specs["root"])
+        return info
+
 

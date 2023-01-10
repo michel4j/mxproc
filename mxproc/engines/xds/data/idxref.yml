@@ -1,0 +1,61 @@
+root:
+  fields:
+    - "RESULTS FROM LOCAL INDEXING OF <int:local_indexed_spots> OBSERVED SPOTS"
+    - " DIMENSION OF SPACE SPANNED BY DIFFERENCE VECTOR CLUSTERS  <int:cluster_dimension>"
+    - "SELECTED:     INDEX_ORIGIN= <int:selected_origin> <int:selected_origin> <int:selected_origin>"
+    - "!!! ERROR !!! <str:failure_message>"
+
+  sections:
+    summary:
+      domain: "DIFFRACTION PARAMETERS USED AT START OF INTEGRATION(.*?)\n\n\n"
+      fields:
+        - "STANDARD DEVIATION OF SPOT    POSITION (PIXELS)  <float:stdev_spot>"
+        - "STANDARD DEVIATION OF SPINDLE POSITION (DEGREES) <float:stdev_spindle>"
+        - "SPACE GROUP NUMBER <int:spacegroup>"
+        - "UNIT CELL PARAMETERS  <float:unit_cell> <float:unit_cell> <float:unit_cell> <float:unit_cell> <float:unit_cell> <float:unit_cell>"
+        - "REC. CELL PARAMETERS  <float:rec_cell> <float:rec_cell> <float:rec_cell> <float:rec_cell> <float:rec_cell> <float:rec_cell>"
+        - "COORDINATES OF UNIT CELL A-AXIS <float:cell_a_axis> <float:cell_a_axis> <float:cell_a_axis>"
+        - "COORDINATES OF UNIT CELL B-AXIS <float:cell_b_axis> <float:cell_b_axis> <float:cell_b_axis>"
+        - "COORDINATES OF UNIT CELL C-AXIS <float:cell_c_axis> <float:cell_c_axis> <float:cell_c_axis>"
+        - "CRYSTAL MOSAICITY (DEGREES) <float:mosaicity>"
+        - "LAB COORDINATES OF ROTATION AXIS <float:rotation_axis> <float:rotation_axis> <float:rotation_axis>"
+        - "DIRECT BEAM COORDINATES (REC. ANGSTROEM)  <float:direct_beam> <float:direct_beam> <float:direct_beam>"
+        - "DETECTOR COORDINATES (PIXELS) OF DIRECT BEAM  <float:beam_center> <float:beam_center>"
+        - "DETECTOR ORIGIN (PIXELS) AT                   <float:detector_origin> <float:detector_origin>"
+        - "CRYSTAL TO DETECTOR DISTANCE (mm)    <float:distance>"
+        - "LAB COORDINATES OF DETECTOR X-AXIS <float:detector_x_axis> <float:detector_x_axis> <float:detector_x_axis>"
+        - "LAB COORDINATES OF DETECTOR Y-AXIS <float:detector_y_axis> <float:detector_y_axis> <float:detector_y_axis>"
+
+    reflections:
+      domain: "REFINED SOLUTION BASED ON INDEXED REFLECTIONS IN SUBTREE(.*?)DIFFRACTION PARAMETERS USED AT START OF INTEGRATION"
+      fields:
+        - " <int:selected_spots> OUT OF <int:indexed_spots> SPOTS INDEXED."
+        - "<int:rejects_overlap> REJECTED REFLECTIONS (REASON : OVERLAP)"
+        - "<int:rejects_far> REJECTED REFLECTIONS (REASON : TOO FAR FROM IDEAL POSITION)"
+        - "EXPECTED ERROR IN SPINDLE  POSITION  <float:stdev_spindle_exp> DEGREES"
+        - "EXPECTED ERROR IN DETECTOR POSITION  <float:stdev_spot_exp> PIXELS"
+
+    spots:
+      domain: "AUTOINDEXING IS BASED ON(.*?)DETERMINATION OF DIFFERENCE"
+      fields:
+        - "AUTOINDEXING IS BASED ON <int:selected_spots> OUT OF <int:all_spots> SPOTS"
+
+    lattices:
+      domain: "DETERMINATION OF LATTICE CHARACTER AND BRAVAIS LATTICE(.+?)LATTICE SYMMETRY IMPLICATED BY SPACE GROUP SYMMETRY"
+      table: " \\* <int:index> <slug:character> <float:quality> <float:unit_cell> <float:unit_cell> <float:unit_cell> <float:unit_cell> <float:unit_cell> <float:unit_cell>"
+
+    subtrees:
+      domain: "SUBTREE    POPULATION(.+?)NUMBER OF ACCEPTED SPOTS FROM LARGEST SUBTREE"
+      table: " <int:subtree> <int:population>\n"
+
+    oscillation_ranges:
+      domain: "Maximum oscillation range to prevent angular overlap(.+?)cpu time used"
+      table: " <float:delta_angle> <float:resolution>\n"
+
+    cluster_indices:
+      domain: " CLUSTER COORDINATES AND INDICES WITH RESPECT TO REC(.+?)PARAMETERS OF THE REDUCED CELL"
+      table: "<int:num> <float:vector><float:vector><float:vector> <int:frequency>. <float:hkl> <float:hkl> <float:hkl>"
+
+    index_origins:
+      domain: "SELECTION OF THE INDEX ORIGIN(.+?)SELECTED:     INDEX_ORIGIN="
+      table: " <int:index_origin> <int:index_origin> <int:index_origin> <float:quality> <float:delta_angle> <float:position> <float:position> <float:vector> <float:vector> <float:vector> <float:deviation> <float:deviation> <float:deviation>\n"

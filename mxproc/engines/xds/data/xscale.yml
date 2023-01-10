@@ -1,0 +1,18 @@
+root:
+  fields:
+    - "!!! ERROR<str:error_code> !!! <str:failure>"
+    - "R-FACTORS FOR INTENSITIES OF DATA SET <slug:input_file>"
+    - "STATISTICS OF SCALED OUTPUT DATA SET : <slug:output_file> "
+  sections:
+    statistics:
+      domain: "STATISTICS OF SCALED OUTPUT DATA SET .*? WITH SIGNAL/NOISE >= -3.0(.+?)STATISTICS OF INPUT DATA SET"
+      table: " <float:shell> <int:observed> <int:unique> <int:possible> <float:completeness>% <float:r_obs>% <float:r_exp>% <int:compared> <float:i_sigma> <float:r_meas>% <float:cc_half><char:signif> <int:cor_ano><char:asignif> <float:sig_ano> <int:Nano>"
+
+    summary:
+      domain: "STATISTICS OF SCALED OUTPUT DATA SET .*? WITH SIGNAL/NOISE >= -3.0(.+?)STATISTICS OF INPUT DATA SET"
+      fields:
+        - "    total <int:observed> <int:unique> <int:possible> <float:completeness>% <float:r_obs>% <float:r_exp>% <int:compared> <float:i_sigma> <float:r_meas>% <float:cc_half><char:signif> <int:cor_ano><char:asignif> <float:sig_ano> <int:Nano>"
+
+    correlations:
+      domain: "CORRELATIONS BETWEEN INPUT DATA SETS AFTER CORRECTIONS(.+?)CORRECTION FACTORS AS FUNCTION OF IMAGE NUMBER & RESOLUTION"
+      table: "<int:i> <int:j> <int:num> <float:corr> <float:int_ratio> <float:b_factor>"

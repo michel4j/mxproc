@@ -1,0 +1,79 @@
+root:
+  fields:
+    - "!!! ERROR<str:error_code> !!! <str:failure>"
+    - "WILSON LINE (using all data) : A= <float:wilson_line> B= <float:wilson_line> CORRELATION= <float:wilson_line>"
+    - "NUMBER OF REFLECTIONS IN SELECTED SUBSET OF IMAGES <int:total_reflections>"
+    - "NUMBER OF SYSTEMATIC ABSENT REFLECTIONS <int:sysabs_reflections>"
+    - "NUMBER OF REJECTED MISFITS <int:misfit_reflections>"
+    - "NUMBER OF ACCEPTED OBSERVATIONS <int:accepted_reflections>"
+    - "NUMBER OF UNIQUE ACCEPTED REFLECTIONS <int:unique_reflections>"
+
+  sections:
+    summary:
+      domain: "REFINEMENT OF DIFFRACTION PARAMETERS USING ALL IMAGES(.+?)THE DATA COLLECTION STATISTICS REPORTED BELOW ASSUMES"
+      fields:
+        - " STANDARD DEVIATION OF SPOT    POSITION (PIXELS)  <float:stdev_spot>"
+        - " STANDARD DEVIATION OF SPINDLE POSITION (DEGREES) <float:stdev_spindle>"
+        - " SPACE GROUP NUMBER <int:spacegroup>"
+        - " UNIT CELL PARAMETERS  <float:unit_cell> <float:unit_cell> <float:unit_cell> <float:unit_cell> <float:unit_cell> <float:unit_cell>"
+        - " E.S.D. OF CELL PARAMETERS  <float:unit_cell_esd> <float:unit_cell_esd> <float:unit_cell_esd> <float:unit_cell_esd> <float:unit_cell_esd> <float:unit_cell_esd>"
+        - " REC. CELL PARAMETERS  <float:rec_cell> <float:rec_cell> <float:rec_cell> <float:rec_cell> <float:rec_cell> <float:rec_cell>"
+        - " COORDINATES OF UNIT CELL A-AXIS <float:cell_a_axis> <float:cell_a_axis> <float:cell_a_axis>"
+        - " COORDINATES OF UNIT CELL B-AXIS <float:cell_b_axis> <float:cell_b_axis> <float:cell_b_axis>"
+        - " COORDINATES OF UNIT CELL C-AXIS <float:cell_c_axis> <float:cell_c_axis> <float:cell_c_axis>"
+        - " CRYSTAL MOSAICITY (DEGREES) <float:mosaicity>"
+        - " LAB COORDINATES OF ROTATION AXIS <float:rotation_axis> <float:rotation_axis> <float:rotation_axis>"
+        - " DIRECT BEAM COORDINATES (REC. ANGSTROEM)  <float:direct_beam> <float:direct_beam> <float:direct_beam>"
+        - " DETECTOR COORDINATES (PIXELS) OF DIRECT BEAM  <float:beam_center> <float:beam_center>"
+        - " DETECTOR ORIGIN (PIXELS) AT                   <float:detector_origin> <float:detector_origin>"
+        - " CRYSTAL TO DETECTOR DISTANCE (mm)    <float:distance>"
+        - " LAB COORDINATES OF DETECTOR X-AXIS <float:detector_x_axis> <float:detector_x_axis> <float:detector_x_axis>"
+        - " LAB COORDINATES OF DETECTOR Y-AXIS <float:detector_y_axis> <float:detector_y_axis> <float:detector_y_axis>"
+
+    statistics:
+      domain: "STATISTICS OF SAVED DATA SET .*? WITH SIGNAL/NOISE >= -3.0(.+?)NUMBER OF REFLECTIONS IN SELECTED"
+      table: " <float:shell> <int:observed> <int:unique> <int:possible> <float:completeness>% <float:r_obs>% <float:r_exp>% <int:compared> <float:i_sigma> <float:r_meas>% <float:cc_half><char:signif> <int:cor_ano><char:asignif> <float:sig_ano> <int:Nano>"
+
+    statistics_summary:
+      domain: "STATISTICS OF SAVED DATA SET .*? WITH SIGNAL/NOISE >= -3.0(.+?)NUMBER OF REFLECTIONS IN SELECTED"
+      fields:
+        - "    total <int:observed> <int:unique> <int:possible> <float:completeness>% <float:r_obs>% <float:r_exp>% <int:compared> <float:i_sigma> <float:r_meas>% <float:cc_half><char:signif> <int:cor_ano><char:asignif> <float:sig_ano> <int:Nano>"
+
+    standard_errors:
+      domain: "STANDARD ERROR OF REFLECTION INTENSITIES(.+?)SUMMARY OF DATA SET STATISTICS FOR VARIOUS SUBSETS OF INCLUDED DATA IMAGES"
+      table: "<float:resol_range:9> <float:resol_range:7> <float:i_sigma:8> <float:chi_sq:6> <float:r_obs:9> <float:r_exp:9> <int:n_obs:7> <int:n_accept:7> <int:n_reject:7>"
+
+    wilson_plot:
+      domain: "WILSON STATISTICS OF DATA SET(.+?)HIGHER ORDER MOMENTS OF WILSON DISTRIBUTION"
+      table: "<int:reflections:8> <float:resolution:9> <float:inv_res_sq:7> <float:mean_i:11> <float:log_mean_i:11> <float:BO:9>"
+
+    correction_factors:
+      domain: "MEAN INTENSITY AS FUNCTION OF SPINDLE(.+?)STANDARD ERROR OF REFLECTION INTENSITIES AS FUNCTION OF RESOLUTION"
+      sections:
+        factors:
+          table:
+            - " TOTAL NUMBER OF CORRECTION FACTORS DEFINED <int:number>"
+            - " DEGREES OF FREEDOM OF CHI\\^2 FIT <float:deg_freedom>"
+            - " CHI\\^2-VALUE OF FIT OF CORRECTION FACTORS <float:chi_sq_fit>"
+            - " NUMBER OF CYCLES CARRIED OUT <int:cycles>"
+
+        parameters:
+          domain: "a        b          ISa(.+?)$"
+          fields:
+            - " <float:a> <float:b> <float:ISa>"
+
+    symmetry:
+      domain: "AUTOMATIC SPACE GROUP ASSIGNMENT(.+?)MEAN DISCREPANCIES BETWEEN OBSERVED AND CALCULATED SPOT LOCATIONS"
+      sections:
+        lattices:
+          domain: "DETERMINATION OF LATTICE CHARACTER AND BRAVAIS LATTICE(.+?)LATTICE SYMMETRY IMPLICATED BY SPACE GROUP SYMMETRY"
+          table: " * <int:id:3> <slug:id> <float:quality> <float:unit_cell> <float:unit_cell> <float:unit_cell> <float:unit_cell> <float:unit_cell> <float:unit_cell> <int:reindex_matrix> <int:reindex_matrix> <int:reindex_matrix> <int:reindex_matrix> <int:reindex_matrix> <int:reindex_matrix> <int:reindex_matrix> <int:reindex_matrix> <int:reindex_matrix> <int:reindex_matrix> <int:reindex_matrix> <int:reindex_matrix>"
+
+        space_group:
+          domain: "SELECTED SPACE GROUP AND UNIT CELL FOR THIS DATA SET(.+?)MEAN DISCREPANCIES BETWEEN OBSERVED AND CALCULATED SPOT LOCATIONS"
+          fields:
+            - "SPACE_GROUP_NUMBER= <int:sg_number>"
+            - "UNIT_CELL_CONSTANTS= <float:unit_cell> <float:unit_cell> <float:unit_cell> <float:unit_cell> <float:unit_cell> <float:unit_cell>"
+            - "UNIT_CELL_A-AXIS= <float:cell_a_axis> <float:cell_a_axis> <float:cell_a_axis>"
+            - "UNIT_CELL_B-AXIS= <float:cell_b_axis> <float:cell_b_axis> <float:cell_b_axis>"
+            - "UNIT_CELL_C-AXIS= <float:cell_c_axis> <float:cell_c_axis> <float:cell_c_axis>"

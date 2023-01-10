@@ -1,0 +1,15 @@
+root:
+  sections:
+    parameters:
+      lines:
+        - "<int:first_frame> <float:start_angle> <float:delta_angle> <float:rotation_axis> <float:rotation_axis> <float:rotation_axis>"
+        - "<float:wavelength> <float:beam_axis> <float:beam_axis> <float:beam_axis>"
+        - "<int:sg_number> <float:unit_cell> <float:unit_cell> <float:unit_cell> <float:unit_cell> <float:unit_cell> <float:unit_cell>"
+        - "<float:cell_a_axis> <float:cell_a_axis> <float:cell_a_axis>"
+        - "<float:cell_b_axis> <float:cell_b_axis> <float:cell_b_axis>"
+        - "<float:cell_c_axis> <float:cell_c_axis> <float:cell_c_axis>"
+        - "<int:segments> <int:detector_size> <int:detector_size> <float:pixel_size> <float:pixel_size>"
+        - "<float:detector_origin> <float:detector_origin> <float:distance>"
+        - "<float:detector_x_axis> <float:detector_x_axis> <float:detector_x_axis>"
+        - "<float:detector_y_axis> <float:detector_y_axis> <float:detector_y_axis>"
+        - "<float:detector_normal> <float:detector_normal> <float:detector_normal>"

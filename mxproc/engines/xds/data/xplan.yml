@@ -1,0 +1,15 @@
+root:
+  fields:
+    - "!!! ERROR<str:error_code> !!! <str:failure>"
+    - "DETECTOR_DISTANCE= <float:distance>"
+  sections:
+    summary:
+      domain: "you would collect a maximum of data for the following combinations(.+?)DETAILED REPORT FOR EACH DATA COLLECTION SCENARIO"
+      table:
+        - "  <float:start_angle>  <float:total_angle> <float:completeness> <float:multiplicity>"
+
+    completeness_statistics:
+      table:
+        - " COMPLETENESS OF DATA COLLECTED IN THE OSCILLATION RANGE <float:start_angle>...<float:end_angle> DEGREES"
+        - "[\\s]+? <float:resolution> [\\s]+?OLD DATA <float:old>% [\\s]+?NEW DATA <float:completeness>% "
+
