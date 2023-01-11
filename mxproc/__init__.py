@@ -9,7 +9,7 @@ from typing import Tuple, Sequence, Union
 
 import numpy
 import yaml
-from mxio import DataSet, XYPair
+from mxio import DataSet, XYPair, parser
 from numpy.typing import ArrayLike
 from tqdm import tqdm
 
@@ -199,6 +199,26 @@ class Analysis(ABC):
         :param kwargs: keyword arguments for tweaking quality check
         """
         ...
+
+
+class MissingInterpreter(Exception):
+    pass
+
+
+class TextParser:
+    LEXICON: dict
+
+    @classmethod
+    def parse(cls, filename: str) -> dict:
+        try:
+            spec_file = cls.LEXICON.get(filename)
+            with open(spec_file, 'r') as file:
+                specs = yaml.safe_load(file)
+        except (KeyError, FileNotFoundError):
+            raise MissingInterpreter(f"No Lexicon available for file {filename!r}")
+
+        info = parser.parse_file(filename, specs["root"])
+        return info
 
 
 def compress_series(values: ArrayLike) -> Sequence[Tuple[int, int]]:
