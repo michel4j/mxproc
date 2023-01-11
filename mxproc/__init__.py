@@ -1,18 +1,39 @@
 import gzip
 import subprocess
-import sys
+import asyncio
+import time
 
+from datetime import datetime
 from abc import ABC, abstractmethod
 from pathlib import Path
 from dataclasses import dataclass, asdict, field
-from typing import Tuple, Sequence, Union
+from typing import Tuple, Sequence, Union, Literal
 
 import numpy
 import yaml
+
 from mxio import DataSet, XYPair, parser
+from mxproc import log
 from numpy.typing import ArrayLike
 from tqdm import tqdm
 
+__all__ = [
+    "logger",
+    "SPACEGROUP_NAMES",
+    "Experiment",
+    "Analysis",
+    "AnalysisOptions",
+    "Command",
+    "CommandFailed",
+    "CommandNotFound",
+    "run_command",
+    "Lattice",
+    "TextParser",
+    "MissingLexicon",
+]
+
+
+logger = log.get_module_logger(__name__)
 
 SPACEGROUP_NAMES = {
     1: 'P1', 2: 'P-1', 3: 'P2', 4: 'P2₁', 5: 'C2', 6: 'Pm', 7: 'Pc', 8: 'Cm', 9: 'Cc', 10: 'P2/m', 11: 'P2₁/m',
@@ -71,6 +92,7 @@ class Experiment:
     distance: float
     frames: Sequence[Tuple[int, int]]
     template: str
+    glob: str
     two_theta: float
     delta_angle: float
     pixel_size: XYPair
@@ -90,10 +112,13 @@ class AnalysisOptions:
     merge: bool = False
 
 
+StepType = Literal["initialize", "spots", "index", "integrate", "scale", "symmetry", "files"]
+
+
 class Analysis(ABC):
     experiments: Sequence[Experiment]
     options: AnalysisOptions
-    results: dict
+    results: dict   # results for each experiment keyed by experiment identifier
 
     def __init__(self, *files, directory: Union[Path, str] = "", anomalous: bool = False, merge: bool = False):
         self.options = AnalysisOptions(files=files, directory=Path(directory), anomalous=anomalous, merge=merge)
@@ -128,6 +153,32 @@ class Analysis(ABC):
         with gzip.open(meta_file, 'wb') as handle:  # gzip compressed yaml file
             yaml.dump(meta, handle, encoding='utf-8')
 
+    def update_result(self, results: dict, realm: StepType):
+        """
+        Update the results dictionary and save a checkpoint meta file
+
+        :param results: dictionary of results keyed by the experiment identifier
+        :param realm: one of "initialize", "spots", "index", "integrate", "scale", "symmetry", "files"
+        """
+
+        for identifier, result in results.items():
+            experiment_results = self.results.get(identifier, {})
+            experiment_results.update({realm: result})
+            self.results[identifier] = experiment_results
+
+        meta_file = self.options.directory / f'{realm}.meta'
+        self.save(meta_file)
+
+    def run(self):
+        """
+        Perform the analysis and gather the harvested results
+        """
+        self.initialize()
+        self.update_result(self.find_spots(), "spots")
+        self.update_result(self.index(), "index")
+        self.update_result(self.integrate(), "integrate")
+
+
     @abstractmethod
     def initialize(self, **kwargs):
         """
@@ -136,72 +187,88 @@ class Analysis(ABC):
         """
         ...
 
-    #@abstractmethod
-    def find_spots(self, **kwargs):
+    @abstractmethod
+    def find_spots(self, **kwargs) -> dict:
         """
         Find spots, and prepare for indexing
         :param kwargs: keyword argument to tweak spot search
+        :return: a dictionary, the keys are experiment identifiers and values are dictionaries containing
+        harvested results from each dataset.
         """
         ...
 
-    #@abstractmethod
-    def index(self, **kwargs):
+    @abstractmethod
+    def index(self, **kwargs) -> dict:
         """
         Perform indexing and refinement
         :param kwargs: keyword argument to tweak indexing
+        :return: a dictionary, the keys are experiment identifiers and values are dictionaries containing
+        harvested results from each dataset.
         """
         ...
 
-    #@abstractmethod
-    def integrate(self, **kwargs):
+    @abstractmethod
+    def integrate(self, **kwargs) -> dict:
         """
         Perform integration.
         :param kwargs: keyword arguments for tweaking the integration settings.
+        :return: a dictionary, the keys are experiment identifiers and values are dictionaries containing
+        harvested results from each dataset.
         """
         ...
 
     #@abstractmethod
-    def symmetry(self, **kwargs):
+    def symmetry(self, **kwargs) -> dict:
         """
         Determination of Laue group symmetry and reindexing to the selected symmetry
         :param kwargs: keyword arguments for tweaking the symmetry
+        :return: a dictionary, the keys are experiment identifiers and values are dictionaries containing
+        harvested results from each dataset.
         """
         ...
 
     #@abstractmethod
-    def scale(self, **kwargs):
+    def scale(self, **kwargs) -> dict:
         """
         performs scaling on integrated datasets
         :param kwargs: keyword arguments for tweaking the scaling
+        :return: a dictionary, the keys are experiment identifiers and values are dictionaries containing
+        harvested results from each dataset.
         """
         ...
 
     #@abstractmethod
-    def export(self, **kwargs):
+    def export(self, **kwargs) -> dict:
         """
         Export the results of processing into various formats.
         :param kwargs: keyword arguments for tweaking the export
+        :return: a dictionary, the keys are experiment identifiers and values are dictionaries containing
+        harvested results from each dataset.
         """
         ...
 
     #@abstractmethod
-    def report(self, **kwargs):
+    def report(self, **kwargs) -> dict:
         """
         Generate reports of the analysis in TXT and HTML formats.
         :param kwargs: keyword arguments for tweaking the reporting
+        :return: a dictionary, the keys are experiment identifiers and values are dictionaries containing
+        harvested results from each dataset.
         """
         ...
 
     #@abstractmethod
-    def quality(self, **kwargs):
+    def quality(self, **kwargs) -> dict:
         """
         Check data quality.
         :param kwargs: keyword arguments for tweaking quality check
+        :return: a dictionary, the keys are experiment identifiers and values are dictionaries containing
+        harvested results from each dataset.
         """
         ...
 
 
-class MissingInterpreter(Exception):
+class MissingLexicon(Exception):
     pass
 
 
@@ -215,7 +282,7 @@ class TextParser:
             with open(spec_file, 'r') as file:
                 specs = yaml.safe_load(file)
         except (KeyError, FileNotFoundError):
-            raise MissingInterpreter(f"No Lexicon available for file {filename!r}")
+            raise MissingLexicon(f"No Lexicon available for file {filename!r}")
 
         info = parser.parse_file(filename, specs["root"])
         return info
@@ -251,6 +318,11 @@ def load_experiment(filename: Union[str, Path]) -> Experiment:
     if dset.index != dset.series[0]:
         dset.get_frame(index=dset.series[0])        # set to first frame so we get proper start angle
 
+    if dset.frame.format in ["HDF5", "NXmx"]:
+        wildcard = dset.reference
+    else:
+        wildcard = dset.glob
+
     return Experiment(
         name=dset.name,
         identifier=dset.identifier,
@@ -270,6 +342,7 @@ def load_experiment(filename: Union[str, Path]) -> Experiment:
         detector_origin=dset.frame.center,
         delta_angle=dset.frame.delta_angle,
         start_angle=dset.frame.start_angle,
+        glob=wildcard
     )
 
 
@@ -287,31 +360,70 @@ def load_multiple(file_names: Sequence[Union[str, Path]]) -> Sequence[Experiment
     return list(experiments.values())
 
 
-def run_command(*args):
-    try:
-        # create a default tqdm progress bar object, unit='B' definnes a String that will be used to define the unit of each iteration in our case bytes
-        with tqdm(unit='B', unit_scale=True, miniters=1, desc="run_task={}".format(args)) as t:
-            process = subprocess.Popen(args, shell=True, bufsize=1, universal_newlines=True, stdout=subprocess.PIPE,
-                                       stderr=subprocess.PIPE)
+class CommandNotFound(Exception):
+    ...
 
-            # print subprocess output line-by-line as soon as its stdout buffer is flushed in Python 3:
-            for line in process.stdout:
-                # Update the progress, since we do not have a predefined iterator
-                # tqdm doesnt know before hand when to end and cant generate a progress bar
-                # hence elapsed time will be shown, this is good enough as we know
-                # something is in progress
-                t.update()
-                # forces stdout to "flush" the buffer
-                sys.stdout.flush()
 
-            process.stdout.close()
+class CommandFailed(Exception):
+    ...
 
-            return_code = process.wait()
 
-            if return_code != 0:
-                raise subprocess.CalledProcessError(return_code, args)
+class Command:
+    def __init__(self, *args: str, logfile: Union[str, Path] = "commands.log", desc: str = ""):
+        """
+        Objects for running commands
 
-    except subprocess.CalledProcessError as e:
-        sys.stderr.write(
-            "common::run_command() : [ERROR]: output = %s, error code = %s\n"
-            % (e.output, e.returncode))
+        :param args: command arguments
+        :param logfile: destination of standard output including errors
+        :param desc: descriptive label of command
+        """
+        self.outfile = Path(logfile)
+        self.args = " ".join(args)
+        self.label = desc
+
+    async def exec(self):
+        """
+        Main method to run the command asynchronously and update the progress bar with a descriptive label
+        """
+
+        with open(self.outfile, 'a') as stdout:
+            start_time = time.time()
+            start_str = datetime.now().strftime('%H:%M:%S')
+            bar_fmt = "{desc}{elapsed}{postfix}"
+            with tqdm(desc=f"{start_str} - {self.label} ... ", miniters=1, leave=False, bar_format=bar_fmt) as spinner:
+                proc = await asyncio.create_subprocess_shell(self.args, stdout=stdout, stderr=stdout)
+                while proc.returncode is None:
+                    spinner.update()
+                    await asyncio.sleep(.1)
+            elapsed = time.time() - start_time
+
+            if proc.returncode != 0:
+                logger.error(log.log_value(f"- {self.label}", f"{elapsed:0.0f}s", log.TermColor.bold))
+                raise subprocess.CalledProcessError(proc.returncode, self.args)
+            else:
+                logger.info(log.log_value(f"- {self.label}", f"{elapsed:0.0f}s", log.TermColor.bold))
+
+    def run(self):
+        """
+        Run command in an event loop
+        :return:
+        """
+        loop = asyncio.get_event_loop()
+        try:
+            loop.run_until_complete(self.exec())
+        except subprocess.CalledProcessError as err:
+            raise CommandFailed(f"{err}")
+
+
+def run_command(*args, desc: str = "", logfile: Union[str, Path] = "commands.log"):
+    """
+    Creates and executes a command instance
+
+    :param args: command arguments
+    :param logfile: destination of standard output including errors
+    :param desc: descriptive label of command
+    """
+
+    command = Command(*args, desc=desc, logfile=logfile)
+    command.run()
+

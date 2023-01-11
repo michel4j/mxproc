@@ -1,7 +1,7 @@
 import os
 from enum import Enum
 from pathlib import Path
-from mxproc import Analysis, run_command, TextParser
+from mxproc import Analysis, run_command, TextParser, logger
 from mxproc.engines.xds import io
 
 
@@ -59,15 +59,73 @@ class XDSAnalysis(Analysis):
             ))
 
     def find_spots(self, **kwargs):
+        results = {}
         for experiment in self.experiments:
             directory = self.options.working_directories[experiment.identifier]
             os.chdir(directory)
 
-            io.create_input_file(('XYCORR','INIT', 'COLSPOT'), experiment, io.XDSParameters(
+            io.create_input_file(('XYCORR', 'INIT', 'COLSPOT'), experiment, io.XDSParameters(
+                data_range=(experiment.frames[0][0], experiment.frames[-1][1]),
+                spot_range=experiment.frames,
+            ))
+            image_range = '{}-{}'.format(experiment.frames[0][0], experiment.frames[-1][1])
+            run_command('xds_par', desc=f'{experiment.name}: Finding strong spots in images {image_range}')
+            results[experiment.identifier] = XDSParser.parse('COLSPOT.LP')
+
+        return results
+
+    def index(self, **kwargs):
+        results = {}
+        for experiment in self.experiments:
+            directory = self.options.working_directories[experiment.identifier]
+            os.chdir(directory)
+
+            io.create_input_file(('IDXREF',), experiment, io.XDSParameters(
                 data_range=(experiment.frames[0][0], experiment.frames[-1][1]),
                 spot_range=experiment.frames,
             ))
 
-            output = run_command('xds_par')
-            result = XDSParser.parse('COLSPOT.LP')
-            print(result)
+            run_command('xds_par', desc=f'{experiment.name}: Auto-indexing and refinement of solution')
+            results[experiment.identifier] = XDSParser.parse('IDXREF.LP')
+
+        return results
+
+    def integrate(self, **kwargs):
+        results = {}
+        for experiment in self.experiments:
+            directory = self.options.working_directories[experiment.identifier]
+            os.chdir(directory)
+
+            io.create_input_file(('DEFPIX INTEGRATE CORRECT',), experiment, io.XDSParameters(
+                data_range=(experiment.frames[0][0], experiment.frames[-1][1]),
+                spot_range=experiment.frames,
+            ))
+
+            run_command('xds_par', desc=f'{experiment.name}: Integrating images')
+            integration = XDSParser.parse('INTEGRATE.LP')
+            correction = XDSParser.parse('CORRECT.LP')
+            parameters = XDSParser.parse('GXPARM.XDS')
+
+            results[experiment.identifier] = {
+                'parameters': parameters,
+                'frame_statistics': integration['scale_factors'],
+                'batch_statistics': integration['batches'],
+                'statistics_table': correction['statistics'],
+                'overall_summary': correction['statistics_overall'],
+                'lo_res_summary': correction['statistics'][0],
+                'hi_res_summary': correction['statistics'][-1],
+                'standard_errors': correction['standard_errors'],
+                'wilson_statistics': {
+                    'plot': correction['wilson_plot'],
+                    'line': correction['wilson_line'],
+                },
+                'correction_factors': correction['correction_factors']['factors'],
+            }
+            results[experiment.identifier]['overall_summary'].update(correction['summary'])
+            results[experiment.identifier]['overall_summary'].update({
+                'sigma_asymptote': correction['correction_factors']['parameters']['sigma_asymptote'],
+            })
+
+            results[experiment.identifier] = XDSParser.parse('INTEGRATE.LP')
+
+        return results

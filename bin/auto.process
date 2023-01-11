@@ -1,0 +1,96 @@
+#!/usr/bin/env python3
+
+import argparse
+import logging
+from pathlib import Path
+from mxproc.engines import xds, dials
+from mxproc import log
+
+EXAMPLES = """
+Data sets:
+
+    Each data set can be represented by any frame from that set.
+    If multiple frames are provided but no MAD modifier options (-m, --mad) is provided, 
+    each set will be processed, and at the end all the datasets will be scaled together 
+    and merge into a single output reflection file.
+
+Examples:
+
+    auto.process --mad /path/to/dataset_{peak,infl,remo}_001.img
+        process a 3-dataset MAD  
+
+    auto.process /path/to/dataset_{hires,lores}_001.img
+        process and merge low-resolution and hi-resolution datasets
+
+    auto.process /path/to/dataset_hires_001.img /path/to/dataset_lores_001.img
+        process and merge low-resolution and hi-resolution datasets. Same as above.
+
+    auto.process --screen /foo/bar/test_001.img --dir /foo/screen_output
+        Screen dataset and place the output in the given directory
+
+"""
+
+parser = argparse.ArgumentParser(
+    description='Automatically Process a dataset', epilog=EXAMPLES, formatter_class=argparse.RawDescriptionHelpFormatter
+)
+parser.add_argument(
+    'images', nargs='*',
+    help=(
+        'Data sets to process. Each data set can be represented '
+        'by any frame from that set. If no datasets are provided, attempt '
+        'to resume from a previous checkpoint file'
+    )
+)
+group = parser.add_mutually_exclusive_group()
+group.add_argument(
+    '-m', '--mad', help='Process each set, scale together and generate separate outputs.', action="store_true"
+)
+group.add_argument('-s', '--screen', help='Process a few frames to characterize crystal', action="store_true")
+group.add_argument('--formula', help="Solve small molecule with provided formula. Eg Mg1O6H12", type=str)
+
+
+prog_group = parser.add_mutually_exclusive_group()
+prog_group.add_argument('--xds', action='store_true', default=True, help="Use XDS for processing")
+prog_group.add_argument('--dials', action='store_true', default=False, help="Use DIALS for processing")
+prog_group.add_argument('--mosflm', action='store_true', default=False, help="Use MOSFLM for processing")
+
+parser.add_argument('-a', '--anom', help="Process with Friedel's law False", action="store_true")
+parser.add_argument('-b', '--backup', help="Backup existing directory", action="store_true")
+parser.add_argument(
+    '-p', '--prefix', type=str, help="comma separated list of prefixes to use for output files"
+)
+parser.add_argument(
+    '-d', '--dir', type=str, help="Directory to store output files. If not provided a new one is created"
+)
+parser.add_argument(
+    '-z', '--zap', action="store_true", help="Abandon saved state and start all over. Must be in a results directory."
+)
+parser.add_argument(
+    '-l', '--load', action="store_true", help="Load manually processed dataset"
+)
+parser.add_argument(
+    '-x', '--nonchiral', action="store_true", help="Non-chiral space groups. Default assumes only chiral molecules"
+)
+
+if __name__ == "__main__":
+    log.log_to_console(logging.DEBUG)
+    args = parser.parse_args()
+    if args.dials:
+        Analysis = dials.DIALSAnalysis
+        dir_prefix = 'dials'
+    else:
+        Analysis = xds.XDSAnalysis
+        dir_prefix = 'xds'
+
+    if not args.dir:
+        index = 1
+        directory = Path(f"{dir_prefix}-{index}")
+        while directory.exists():
+            index += 1
+            directory = Path(f"{dir_prefix}-{index}")
+
+    else:
+        directory = Path(args.dir)
+
+    proc = Analysis(*args.images, directory=directory.absolute())
+    proc.run()
