@@ -139,7 +139,7 @@ def create_input_file(jobs: Sequence[XDSJob], experiment: Experiment, parameters
 
     extra_text = "!----------------- Extra parameters\n"
     if 'PILATUS' in detector_name:
-        extra_text += "NUMBER_OF_PROFILE_GRID_POINTS_ALONG_ALPHA/BETA= 13"
+        extra_text += "NUMBER_OF_PROFILE_GRID_POINTS_ALONG_ALPHA/BETA= 13\n"
     if parameters.min_spot_separation is not None:
         extra_text += f'SEPMIN= {parameters.min_spot_separation}\n'
     if parameters.min_spot_size is not None:

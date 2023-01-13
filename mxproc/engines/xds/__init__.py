@@ -96,7 +96,7 @@ class XDSAnalysis(Analysis):
             directory = self.options.working_directories[experiment.identifier]
             os.chdir(directory)
 
-            io.create_input_file(('DEFPIX INTEGRATE CORRECT',), experiment, io.XDSParameters(
+            io.create_input_file(('DEFPIX', 'INTEGRATE', 'CORRECT',), experiment, io.XDSParameters(
                 data_range=(experiment.frames[0][0], experiment.frames[-1][1]),
                 spot_range=experiment.frames,
             ))
@@ -125,7 +125,5 @@ class XDSAnalysis(Analysis):
             results[experiment.identifier]['overall_summary'].update({
                 'sigma_asymptote': correction['correction_factors']['parameters']['sigma_asymptote'],
             })
-
-            results[experiment.identifier] = XDSParser.parse('INTEGRATE.LP')
 
         return results
