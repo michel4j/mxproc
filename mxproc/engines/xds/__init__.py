@@ -102,7 +102,7 @@ class XDSAnalysis(Analysis):
             ))
 
             run_command('xds_par', desc=f'{experiment.name}: Integrating images')
-            run_command('echo "XDS_ASCII.HKL" | xdsstat 20 3 > XDSSTAT.LP')
+            run_command('echo "XDS_ASCII.HKL" | xdsstat 20 3 > XDSSTAT.LP', desc=f'{experiment.name}: Gathering statistics')
             integration = XDSParser.parse('INTEGRATE.LP')
             correction = XDSParser.parse('CORRECT.LP')
             parameters = XDSParser.parse('GXPARM.XDS')
@@ -110,7 +110,9 @@ class XDSAnalysis(Analysis):
 
             results[experiment.identifier] = {
                 'parameters': parameters,
-                'frame_statistics': integration['scale_factors'],
+                'frame_summary': integration['scale_factors'],
+                'frame_statistics': stats['frame_statistics'],
+                'diff_statistics': stats['diff_statistics'],
                 'batch_statistics': integration['batches'],
                 'statistics_table': correction['statistics'],
                 'overall_summary': correction['statistics_overall'],
