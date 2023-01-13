@@ -369,16 +369,16 @@ class CommandFailed(Exception):
 
 
 class Command:
-    def __init__(self, *args: str, logfile: Union[str, Path] = "commands.log", desc: str = ""):
+    def __init__(self, shell_cmd: str, logfile: Union[str, Path] = "commands.log", desc: str = ""):
         """
         Objects for running commands
 
-        :param args: command arguments
+        :param shell_cmd: command arguments
         :param logfile: destination of standard output including errors
         :param desc: descriptive label of command
         """
         self.outfile = Path(logfile)
-        self.args = " ".join(args)
+        self.shell_cmd = shell_cmd
         self.label = desc
 
     async def exec(self):
@@ -391,7 +391,7 @@ class Command:
             start_str = datetime.now().strftime('%H:%M:%S')
             bar_fmt = "{desc}{elapsed}{postfix}"
             with tqdm(desc=f"{start_str} - {self.label} ... ", miniters=1, leave=False, bar_format=bar_fmt) as spinner:
-                proc = await asyncio.create_subprocess_shell(self.args, stdout=stdout, stderr=stdout)
+                proc = await asyncio.create_subprocess_shell(self.shell_cmd, stdout=stdout, stderr=stdout)
                 while proc.returncode is None:
                     spinner.update()
                     await asyncio.sleep(.1)
@@ -399,7 +399,7 @@ class Command:
 
             if proc.returncode != 0:
                 logger.error(log.log_value(f"- {self.label}", f"{elapsed:0.0f}s", log.TermColor.bold))
-                raise subprocess.CalledProcessError(proc.returncode, self.args)
+                raise subprocess.CalledProcessError(proc.returncode, self.shell_cmd)
             else:
                 logger.info(log.log_value(f"- {self.label}", f"{elapsed:0.0f}s", log.TermColor.bold))
 
@@ -415,15 +415,15 @@ class Command:
             raise CommandFailed(f"{err}")
 
 
-def run_command(*args, desc: str = "", logfile: Union[str, Path] = "commands.log"):
+def run_command(cmd, desc: str = "", logfile: Union[str, Path] = "commands.log"):
     """
     Creates and executes a command instance
 
-    :param args: command arguments
+    :param cmd: command arguments
     :param logfile: destination of standard output including errors
     :param desc: descriptive label of command
     """
 
-    command = Command(*args, desc=desc, logfile=logfile)
+    command = Command(cmd, desc=desc, logfile=logfile)
     command.run()
 

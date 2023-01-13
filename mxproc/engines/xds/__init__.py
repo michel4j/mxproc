@@ -96,15 +96,17 @@ class XDSAnalysis(Analysis):
             directory = self.options.working_directories[experiment.identifier]
             os.chdir(directory)
 
-            io.create_input_file(('DEFPIX INTEGRATE CORRECT',), experiment, io.XDSParameters(
+            io.create_input_file(('DEFPIX', 'INTEGRATE', 'CORRECT',), experiment, io.XDSParameters(
                 data_range=(experiment.frames[0][0], experiment.frames[-1][1]),
                 spot_range=experiment.frames,
             ))
 
             run_command('xds_par', desc=f'{experiment.name}: Integrating images')
+            run_command('echo "XDS_ASCII.HKL" | xdsstat 20 3 > XDSSTAT.LP')
             integration = XDSParser.parse('INTEGRATE.LP')
             correction = XDSParser.parse('CORRECT.LP')
             parameters = XDSParser.parse('GXPARM.XDS')
+            stats = XDSParser.parse('XDSSTAT.LP')
 
             results[experiment.identifier] = {
                 'parameters': parameters,
