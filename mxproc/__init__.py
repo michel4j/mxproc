@@ -16,6 +16,7 @@ from mxio import DataSet, XYPair, parser
 from mxproc import log
 from numpy.typing import ArrayLike
 from tqdm import tqdm
+from importlib.metadata import version, PackageNotFoundError
 
 __all__ = [
     "logger",
@@ -31,6 +32,11 @@ __all__ = [
     "TextParser",
     "MissingLexicon",
 ]
+
+try:
+    __version__ = version("mxproc")
+except PackageNotFoundError:
+    __version__ = "Dev"
 
 
 logger = log.get_module_logger(__name__)
@@ -173,7 +179,22 @@ class Analysis(ABC):
         """
         Perform the analysis and gather the harvested results
         """
+        start_time = datetime.now()
+        header = f'MX Auto Processing (version: {__version__})'
+        sub_header = "{} [{:d} dataset(s)]".format(start_time.isoformat(), len(self.experiments))
+        logger.info('=' * 79)
+        logger.info(f'{header:^79}')
+        logger.info('=' * 79)
+        logger.info(f'{sub_header:^79}')
+        logger.info('-' * 79)
+
+        logger.info('Working directories:')
         self.initialize()
+        for experiment in self.experiments:
+            logger.info(
+                log.log_value(f' - {experiment.name}', str(self.options.working_directories[experiment.identifier]))
+            )
+
         self.update_result(self.find_spots(), "spots")
         self.update_result(self.index(), "index")
         self.update_result(self.integrate(), "integrate")
@@ -390,7 +411,7 @@ class Command:
             start_time = time.time()
             start_str = datetime.now().strftime('%H:%M:%S')
             bar_fmt = "{desc}{elapsed}{postfix}"
-            with tqdm(desc=f"{start_str} - {self.label} ... ", miniters=1, leave=False, bar_format=bar_fmt) as spinner:
+            with tqdm(desc=f"{start_str} {self.label} ... ", miniters=1, leave=False, bar_format=bar_fmt) as spinner:
                 proc = await asyncio.create_subprocess_shell(self.shell_cmd, stdout=stdout, stderr=stdout)
                 while proc.returncode is None:
                     spinner.update()
@@ -398,10 +419,10 @@ class Command:
             elapsed = time.time() - start_time
 
             if proc.returncode != 0:
-                logger.error(log.log_value(f"- {self.label}", f"{elapsed:0.0f}s", log.TermColor.bold))
+                logger.error(log.log_value(f"{self.label} [FAILED]", f"{elapsed:0.0f}s", log.TermColor.bold))
                 raise subprocess.CalledProcessError(proc.returncode, self.shell_cmd)
             else:
-                logger.info(log.log_value(f"- {self.label}", f"{elapsed:0.0f}s", log.TermColor.bold))
+                logger.info(log.log_value(f"{self.label}", f"{elapsed:0.0f}s", log.TermColor.bold))
 
     def run(self):
         """
