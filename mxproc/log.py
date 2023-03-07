@@ -88,10 +88,10 @@ def get_module_logger(name: str = __name__) -> logging.Logger:
     :return: logging.Logger instance
     """
     name = name.split('.')[-1]
-    logger = logging.getLogger(name)
-    logger.setLevel(logging.INFO)
-    logger.addHandler(NullHandler())
-    return logger
+    log = logging.getLogger(name)
+    log.setLevel(logging.INFO)
+    log.addHandler(NullHandler())
+    return log
 
 
 def log_to_console(level: int = logging.INFO):
@@ -132,11 +132,74 @@ def log_value(descr, value, style=TermColor.bold, width=79, spacer='.'):
     :param spacer: spacer character, default '.'
     :returns: formatted text
     """
-    value_width = width - len(descr) - 2
+    value_width = width - len(descr) - 1
     value_texts = textwrap.wrap(value, value_width)
 
-    return '\n '.join([
+    return [
         f'{descr} {spacer * (width - len(descr) - len(line) - 2)} {style(line)}'
         for line in value_texts
-    ])
+    ]
+
+
+class LoggerManager:
+    logger: logging.Logger
+
+    def __init__(self):
+        self.logger = get_module_logger("mxproc")
+
+    def __getattr__(self, item):
+        if hasattr(self.logger, item):
+            return getattr(self.logger, item)
+        raise AttributeError
+
+    def line(self, kind: str = '-'):
+        """
+        Draw a horizontal line in the log
+        :param kind: line character
+        """
+        self.logger.info(kind * 79)
+
+    def banner(self, text: str, overline: bool = True, underline: bool = True, line: str = '='):
+        """
+        Display text in a banner with optional lines
+        :param text:  Banner text, will be centered in the 80 character window
+        :param overline: Whether to draw lines above
+        :param underline: Whether to draw lines below
+        :param line: Line Character
+        """
+        if overline:
+            self.line(line)
+        self.logger.info(f'{text:^79}')
+        if underline:
+            self.line(line)
+
+    def info_value(self, text, value_text):
+        """
+        Display a value at the end of the info log line, wrap as necessary.
+        :param text:  log message body
+        :param value_text: log message value
+        """
+        for line in log_value(text, value_text):
+            self.info(line)
+
+    def error_value(self, text, value_text):
+        """
+        Display a value at the end of the error log line, wrap as necessary.
+        :param text:  log message body
+        :param value_text: log message value
+        """
+        for line in log_value(text, value_text):
+            self.error(line)
+
+    def warning_value(self, text, value_text):
+        """
+        Display a value at the end of the warning log line, wrap as necessary.
+        :param text:  log message body
+        :param value_text: log message value
+        """
+        for line in log_value(text, value_text):
+            self.warning(line)
+
+
+logger = LoggerManager()
 

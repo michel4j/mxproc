@@ -3,7 +3,7 @@ root:
     - "!!! ERROR<str:error_code> !!! <str:failure>"
     - "NUMBER OF STRONG PIXELS EXTRACTED FROM IMAGES <int:strong_pixels:11>"
     - "NUMBER OF DIFFRACTION SPOTS LOCATED           <int:strong_spots:11>"
-    - "NUMBER OF DIFFRACTION SPOTS ACCEPTED          <int:accepted_spots:11>"
+    - "NUMBER OF DIFFRACTION SPOTS ACCEPTED          <int:good_spots:11>"
   sections:
     spot_search:
       table: " <int:frame:7> <int:background:9> <int:strong:11> <int:flag:7>"

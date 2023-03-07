@@ -1,10 +1,16 @@
 import os
-from mxproc import Analysis, run_command
+from mxproc import Analysis
+from mxproc.command import run_command, CommandFailed
+from mxproc.log import logger
+from mxproc.engines.dials.parser import DIALSParser
 
 
 class DIALSAnalysis(Analysis):
+    prefix = 'dials'
 
     def initialize(self, **kwargs):
+        results = {}
+        logger.info('Preparing Working directories:')
         for experiment in self.experiments:
             directory = self.options.directory
             directory = directory if len(self.experiments) == 1 else directory / experiment.name
@@ -14,7 +20,9 @@ class DIALSAnalysis(Analysis):
             wildcard = str(experiment.directory / experiment.glob)
 
             os.chdir(directory)
+            logger.info_value(f' - {experiment.name}', str(directory))
             run_command(f'dials.import {wildcard}', desc=f"{experiment.name}: Importing data set")
+        return results
 
     def find_spots(self, **kwargs) -> dict:
         results = {}
@@ -23,7 +31,7 @@ class DIALSAnalysis(Analysis):
             os.chdir(directory)
             image_range = '{}-{}'.format(experiment.frames[0][0], experiment.frames[-1][1])
             run_command('dials.find_spots imported.expt', desc=f'{experiment.name}: Finding strong spots in images {image_range}')
-            # results[experiment.identifier] = DIALSParser.parse('COLSPOT.LP')
+            results[experiment.identifier] = DIALSParser.parse('spots.yml')
 
         return results
 

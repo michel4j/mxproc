@@ -6,7 +6,7 @@ from typing import Union, Literal, Tuple, Sequence
 
 import numpy
 
-from mxproc import Lattice, XYPair, Experiment
+from mxproc.experiment import Lattice, Experiment
 
 XDSJob = Literal["XYCORR", "INIT", "COLSPOT", "IDXREF",  "DEFPIX", "INTEGRATE", "CORRECT", "ALL"]
 XDSRefinement = Literal["CELL", "BEAM", "ORIENTATION", "AXIS",  "DISTANCE", "POSITION", "SEGMENT", "ALL"]
@@ -25,10 +25,12 @@ class XDSParameters:
     min_spot_size: int | None = None
     min_spot_separation: int | None = None
     cluster_radius: int or None = None
-    strong_sigma: int or None = 3
+    strong_sigma: int or None = 4
     anomalous: bool = False
     strict_absorption: bool = False
     fixed_scale_factors: bool = False
+    max_profile_error: Tuple[float, float] | None = None
+    message: str = ""
     refine_index: Sequence[XDSRefinement] = ('CELL', 'BEAM', 'ORIENTATION', 'AXIS')
     refine_integrate: Sequence[XDSRefinement] = ('POSITION', 'BEAM', 'ORIENTATION')
 
@@ -52,12 +54,12 @@ def create_input_file(jobs: Sequence[XDSJob], experiment: Experiment, parameters
         detector_type = 'RAXIS'
     elif 'PILATUS' in detector_name:
         detector_type = 'PILATUS'
-        parameters.min_spot_size = 3
+        parameters.min_spot_size = 2
     elif 'EIGER' in detector_name:
         detector_type = 'EIGER'
         parameters.min_spot_size = 3
         parameters.min_spot_separation = 4
-        parameters.cluster_radius = 2
+        parameters.cluster_radius = parameters.min_spot_separation//2
         if experiment.format == "NXmx":
             parameters.format = "GENERIC"
             parameters.plugin = shutil.which('durin-plugin.so')
@@ -157,6 +159,10 @@ def create_input_file(jobs: Sequence[XDSJob], experiment: Experiment, parameters
 
     if parameters.fixed_scale_factors:
         extra_text += f'DATA_RANGE_FIXED_SCALE_FACTOR= {parameters.data_range[0]} {parameters.data_range[1]} 1.0\n'
+
+    if parameters.max_profile_error:
+        extra_text += f'MAXIMUM_ERROR_OF_SPOT_POSITION= {parameters.max_profile_error[0]}\n'
+        extra_text += f'MAXIMUM_ERROR_OF_SPINDLE_POSITION= {parameters.max_profile_error[1]}\n'
 
     with open('XDS.INP', 'w') as outfile:
         outfile.write(job_text)

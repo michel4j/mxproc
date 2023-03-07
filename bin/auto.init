@@ -1,0 +1,32 @@
+#!/usr/bin/env python3
+
+import argparse
+import logging
+from pathlib import Path
+from mxproc.engines import xds, dials
+from mxproc import log
+
+
+parser = argparse.ArgumentParser(
+    description='Initialize a dataset processing', formatter_class=argparse.RawDescriptionHelpFormatter
+)
+parser.add_argument('images', nargs='*', help='Data sets to process.')
+parser.add_argument(
+    '-d', '--dir', type=str, help="Directory to store output files. If not provided a new one is created"
+)
+prog_group = parser.add_mutually_exclusive_group()
+prog_group.add_argument('--xds', action='store_true', default=True, help="Use XDS for processing")
+prog_group.add_argument('--dials', action='store_true', default=False, help="Use DIALS for processing")
+prog_group.add_argument('--mosflm', action='store_true', default=False, help="Use MOSFLM for processing")
+
+
+if __name__ == "__main__":
+    log.log_to_console(logging.DEBUG)
+    args = parser.parse_args()
+    if args.dials:
+        Analysis = dials.DIALSAnalysis
+    else:
+        Analysis = xds.XDSAnalysis
+
+    proc = Analysis(*args.images, directory=args.dir)
+    proc.update_result(proc.initialize(), "initialize")

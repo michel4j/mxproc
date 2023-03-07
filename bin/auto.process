@@ -77,20 +77,8 @@ if __name__ == "__main__":
     args = parser.parse_args()
     if args.dials:
         Analysis = dials.DIALSAnalysis
-        dir_prefix = 'dials'
     else:
         Analysis = xds.XDSAnalysis
-        dir_prefix = 'xds'
 
-    if not args.dir:
-        index = 1
-        directory = Path(f"{dir_prefix}-{index}")
-        while directory.exists():
-            index += 1
-            directory = Path(f"{dir_prefix}-{index}")
-
-    else:
-        directory = Path(args.dir)
-
-    proc = Analysis(*args.images, directory=directory.absolute())
+    proc = Analysis(*args.images, directory=args.dir)
     proc.run()
