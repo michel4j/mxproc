@@ -1,20 +1,25 @@
 root:
   fields:
-    - "!!! ERROR<str:error_code> !!! <str:failure>"
+    - "!!! ERROR<str:error_code> !!! <str:error>"
     - "WILSON LINE (using all data) : A= <float:wilson_line> B= <float:wilson_line> CORRELATION= <float:wilson_line>"
-    - "NUMBER OF REFLECTIONS IN SELECTED SUBSET OF IMAGES <int:total_reflections>"
-    - "NUMBER OF SYSTEMATIC ABSENT REFLECTIONS <int:sysabs_reflections>"
-    - "NUMBER OF REJECTED MISFITS <int:misfit_reflections>"
-    - "NUMBER OF ACCEPTED OBSERVATIONS <int:accepted_reflections>"
-    - "NUMBER OF UNIQUE ACCEPTED REFLECTIONS <int:unique_reflections>"
+
 
   sections:
     summary:
       domain: "REFINEMENT OF DIFFRACTION PARAMETERS USING ALL IMAGES(.+?)THE DATA COLLECTION STATISTICS REPORTED BELOW ASSUMES"
       fields:
-        - " STANDARD DEVIATION OF SPOT    POSITION (PIXELS)  <float:spot_deviation>"
-        - " STANDARD DEVIATION OF SPINDLE POSITION (DEGREES) <float:spindle_deviation>"
+        - " STANDARD DEVIATION OF SPOT    POSITION (PIXELS)  <float:pixel_error>"
+        - " STANDARD DEVIATION OF SPINDLE POSITION (DEGREES) <float:angle_error>"
         - " CRYSTAL MOSAICITY (DEGREES) <float:mosaicity>"
+
+    reflections:
+      domain: "STATISTICS OF SAVED DATA SET(.+?)WILSON STATISTICS OF DATA SET"
+      fields:
+        - "NUMBER OF REFLECTIONS IN SELECTED SUBSET OF IMAGES <int:total>"
+        - "NUMBER OF SYSTEMATIC ABSENT REFLECTIONS <int:absent>"
+        - "NUMBER OF REJECTED MISFITS <int:misfits>"
+        - "NUMBER OF ACCEPTED OBSERVATIONS <int:accepted>"
+        - "NUMBER OF UNIQUE ACCEPTED REFLECTIONS <int:unique>"
 
     statistics:
       domain: "STATISTICS OF SAVED DATA SET .*? WITH SIGNAL/NOISE >= -3.0(.+?)NUMBER OF REFLECTIONS IN SELECTED"
@@ -38,17 +43,14 @@ root:
       sections:
         factors:
           table:
-            - " TOTAL NUMBER OF CORRECTION FACTORS DEFINED <int:number>"
-            - " DEGREES OF FREEDOM OF CHI\\^2 FIT <float:deg_freedom>"
-            - " CHI\\^2-VALUE OF FIT OF CORRECTION FACTORS <float:chi_sq_fit>"
-            - " NUMBER OF CYCLES CARRIED OUT <int:cycles>"
+            - " CHI\\^2-VALUE OF FIT OF CORRECTION FACTORS <float:chi_sqr>"
 
         parameters:
           domain: "a        b          ISa(.+?)$"
           fields:
-            - " <float:a> <float:b> <float:sigma_asymptote>"
+            - " <float:a> <float:b> <float:i_sigma_a>"
 
 
     lattices:
       domain: "DETERMINATION OF LATTICE CHARACTER AND BRAVAIS LATTICE(.+?)LATTICE SYMMETRY IMPLICATED BY SPACE GROUP SYMMETRY"
-      table: " * <int:id:3> <slug:id> <float:quality> <float:unit_cell> <float:unit_cell> <float:unit_cell> <float:unit_cell> <float:unit_cell> <float:unit_cell> <int:reindex_matrix> <int:reindex_matrix> <int:reindex_matrix> <int:reindex_matrix> <int:reindex_matrix> <int:reindex_matrix> <int:reindex_matrix> <int:reindex_matrix> <int:reindex_matrix> <int:reindex_matrix> <int:reindex_matrix> <int:reindex_matrix>"
+      table: " * <int:id:3> <slug:character> <float:quality> <float:unit_cell> <float:unit_cell> <float:unit_cell> <float:unit_cell> <float:unit_cell> <float:unit_cell> <int:reindex_matrix> <int:reindex_matrix> <int:reindex_matrix> <int:reindex_matrix> <int:reindex_matrix> <int:reindex_matrix> <int:reindex_matrix> <int:reindex_matrix> <int:reindex_matrix> <int:reindex_matrix> <int:reindex_matrix> <int:reindex_matrix>"

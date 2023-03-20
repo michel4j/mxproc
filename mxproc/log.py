@@ -121,7 +121,7 @@ def log_to_file(filename: str, level: int = logging.DEBUG):
     logging.getLogger('').addHandler(logfile)
 
 
-def log_value(descr, value, style=TermColor.bold, width=79, spacer='.'):
+def log_value(descr, value, style=TermColor.italics, width=79, spacer='.'):
     """
     Format a log line of the form ' Description: ............... value '
 
@@ -134,11 +134,13 @@ def log_value(descr, value, style=TermColor.bold, width=79, spacer='.'):
     """
     value_width = width - len(descr) - 1
     value_texts = textwrap.wrap(value, value_width)
-
-    return [
-        f'{descr} {spacer * (width - len(descr) - len(line) - 2)} {style(line)}'
-        for line in value_texts
-    ]
+    if value_texts:
+        return [
+            f'{descr} {spacer * (width - len(descr) - len(line) - 2)} {style(line)}'
+            for line in value_texts
+        ]
+    else:
+        return [f'{descr} {spacer * (width - len(descr) - 1)}']
 
 
 class LoggerManager:
@@ -173,31 +175,34 @@ class LoggerManager:
         if underline:
             self.line(line)
 
-    def info_value(self, text, value_text):
+    def info_value(self, text, value_text, spacer='.'):
         """
         Display a value at the end of the info log line, wrap as necessary.
         :param text:  log message body
         :param value_text: log message value
+        :param spacer: line character
         """
-        for line in log_value(text, value_text):
+        for line in log_value(text, value_text, spacer=spacer):
             self.info(line)
 
-    def error_value(self, text, value_text):
+    def error_value(self, text, value_text, spacer='.'):
         """
         Display a value at the end of the error log line, wrap as necessary.
         :param text:  log message body
         :param value_text: log message value
+        :param spacer: line character
         """
-        for line in log_value(text, value_text):
+        for line in log_value(text, value_text, spacer=spacer):
             self.error(line)
 
-    def warning_value(self, text, value_text):
+    def warning_value(self, text, value_text, spacer='.'):
         """
         Display a value at the end of the warning log line, wrap as necessary.
         :param text:  log message body
         :param value_text: log message value
+        :param spacer: line character
         """
-        for line in log_value(text, value_text):
+        for line in log_value(text, value_text, spacer=spacer):
             self.warning(line)
 
 

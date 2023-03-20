@@ -3,25 +3,27 @@ root:
     - "RESULTS FROM LOCAL INDEXING OF <int:local_indexed_spots> OBSERVED SPOTS"
     - " DIMENSION OF SPACE SPANNED BY DIFFERENCE VECTOR CLUSTERS  <int:cluster_dimension>"
     - "SELECTED:     INDEX_ORIGIN= <int:selected_origin> <int:selected_origin> <int:selected_origin>"
-    - "!!! ERROR !!! <str:failure_message>"
-    - "!!! WARNING !!! <str:warning_message>"
+    - "!!! ERROR !!! <str:message_1>"
+    - "!!! ERROR IN REFINE !!! <str:message_2>"
+    - "!!! WARNING !!! <str:message_3>"
     - "MAXIMUM MAGNITUDE OF INDEX DIFFERENCES ALLOWED    <int:max_magnitude_diff>"
     - "MAXIMUM ALLOWED DEVIATION FROM INTEGRAL INDICES     <float:max_integral_dev>"
+    - "EXPECTED ERROR IN SPINDLE  POSITION <float:exp_ang_err> DEGREES"
+    - "EXPECTED ERROR IN DETECTOR POSITION <float:exp_pos_err> PIXELS"
 
   sections:
     quality:
       domain: "DIFFRACTION PARAMETERS USED AT START OF INTEGRATION(.*?)\n\n\n"
       fields:
-        - "STANDARD DEVIATION OF SPOT    POSITION (PIXELS)  <float:position>"
-        - "STANDARD DEVIATION OF SPINDLE POSITION (DEGREES) <float:angle>"
+        - "STANDARD DEVIATION OF SPOT    POSITION (PIXELS)  <float:pixel_error>"
+        - "STANDARD DEVIATION OF SPINDLE POSITION (DEGREES) <float:angle_error>"
         - "CRYSTAL MOSAICITY (DEGREES) <float:mosaicity>"
 
     spots:
-      domain: "REFINED SOLUTION BASED ON INDEXED REFLECTIONS IN SUBTREE(.*?)DIFFRACTION PARAMETERS USED AT START OF INTEGRATION"
       fields:
         - "<int:indexed> OUT OF <int:total> SPOTS INDEXED."
-        - "<int:overlap> REJECTED REFLECTIONS (REASON : OVERLAP)"
-        - "<int:poor> REJECTED REFLECTIONS (REASON : TOO FAR FROM IDEAL POSITION)"
+        - "<int:overlap> REJECTED REFLECTIONS (REASON: OVERLAP)"
+        - "<int:misfits> REJECTED REFLECTIONS (REASON: TOO FAR FROM IDEAL POSITION)"
 
     lattices:
       domain: "DETERMINATION OF LATTICE CHARACTER AND BRAVAIS LATTICE(.+?)LATTICE SYMMETRY IMPLICATED BY SPACE GROUP SYMMETRY"

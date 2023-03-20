@@ -1,10 +1,11 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Sequence, Tuple, Union
 
 import itertools
 import numpy
-from mxio import DataSet, XYPair
+from mxio import DataSet, XYPair, Geometry
+from numpy._typing import ArrayLike
 from numpy.typing import ArrayLike
 
 SPACEGROUP_NAMES = {
@@ -37,6 +38,35 @@ SPACEGROUP_NAMES = {
     222: 'Pn-3n', 223: 'Pm-3n'
 }
 
+SPACEGROUPS = {
+    'aP': (1, 2),
+    'mP': (3, 4, 6, 7, 10, 11, 13, 14),
+    'mC': (5, 8, 9, 12, 15),
+    'mI': (5, 8, 9, 12, 15),
+    'oP': (
+        16, 17, 18, 19, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 47, 48, 49, 50, 51, 52, 53, 54, 55,
+        56, 57, 58, 59, 69, 61, 62,
+    ),
+    'oC': (20, 21, 35, 36, 37, 63, 64, 65, 66, 67, 68,),
+    'oF': (22, 38, 39, 40, 41, 42, 43, 69, 70,),
+    'oI': (23, 24, 44, 45, 46, 71, 72, 73, 74, ),
+    'tP': (
+        75, 76, 77, 78, 81, 83, 84, 85, 86, 89, 90, 91, 92, 93, 94, 95, 96, 99, 100, 101, 102, 103,
+        104, 105, 106, 111, 112, 113, 114, 115, 116, 117, 118, 123, 124, 125, 126, 127, 128, 129,
+        130, 131, 132, 133, 134, 135, 136, 137, 138,
+    ),
+    'tI': (79, 97, 79, 80, 82, 87, 88, 97, 98, 107, 108, 109, 110, 119, 120, 121, 122, 139, 140, 141, 142),
+    'hP': (
+        143, 144, 145, 147, 149, 150, 151, 152, 153, 154, 156, 157, 158, 159, 162, 163, 164, 165,
+        168, 169, 170, 171, 172, 173, 174, 175, 176, 177, 178, 179, 180, 181, 182, 183, 184, 185,
+        186, 187, 188, 189, 190, 191, 192, 193, 194
+    ),
+    'hR': (146, 148, 155, 160, 161, 166, 167),
+    'cP': (195, 198, 200, 201, 205, 207, 208, 212, 213, 215, 218, 221, 222, 223, 224),
+    'cF': (196, 202, 203, 209, 210, 216, 225, 226, 227, 228,),
+    'cI': (197, 199, 204, 206, 211, 214, 217, 220, 229, 230)
+}
+
 POINT_GROUPS = {
     'aP': (1,),
     'mP': (3,),
@@ -59,15 +89,30 @@ POINT_GROUPS = {
 @dataclass
 class Lattice:
     spacegroup: int = 0
+    name: str = field(init=False)
     a: float = 0.0
     b: float = 0.0
     c: float = 0.0
     alpha: float = 0.0
     beta: float = 0.0
     gamma: float = 0.0
+    character: str = field(init=False)
 
-    def name(self):
-        return f'{SPACEGROUP_NAMES[self.spacegroup]}'
+    def __post_init__(self):
+        self.character = spacegroup_character(self.spacegroup)
+        self.name = SPACEGROUP_NAMES.get(self.spacegroup, "P1")
+
+    def volume(self) -> float:
+        """
+        Calculate unit cell volume in  cubic angstroms
+        """
+
+        cos_alpha = numpy.cos(numpy.radians(self.alpha))
+        cos_beta = numpy.cos(numpy.radians(self.beta))
+        cos_gamma = numpy.cos(numpy.radians(self.gamma))
+        return self.a * self.b * self.c * (
+                1 - cos_alpha**2 - cos_beta**2 - cos_gamma**2 + 2*cos_alpha*cos_beta*cos_gamma
+        )**0.5
 
 
 @dataclass
@@ -88,9 +133,12 @@ class Experiment:
     pixel_size: XYPair
     detector_size: XYPair
     detector_origin: XYPair
+    geometry: Geometry
     cutoff_value: float
     sensor_thickness: float
     start_angle: float = 0.0
+    lattice: Lattice = field(default_factory=Lattice)
+    missing: Sequence[Tuple[int, int]] = ()
 
 
 def compress_series(values: ArrayLike) -> Sequence[Tuple[int, int]]:
@@ -136,15 +184,16 @@ def load_experiment(filename: Union[str, Path]) -> Sequence[Experiment]:
             for frame in (dset.get_frame(index),)
         ])
 
-    split_mask = (
-        (numpy.abs(numpy.diff(angles[:, 1]) - dset.frame.delta_angle) > 1e-6) |
-        (numpy.diff(angles[:, 0]) > 1.5)
-    )
-    sweeps = numpy.split(angles, numpy.where(split_mask)[0])
+    diffs = numpy.abs(numpy.diff(angles, axis=0))
+    diffs[:, 1] /= dset.frame.delta_angle
 
+    sweep_mask = numpy.argwhere(diffs[:, 0] != diffs[:, 1]).ravel() + 1
+    sweeps = numpy.split(angles, sweep_mask)
+
+    add_suffix = len(sweeps) > 1
     return [
         Experiment(
-            name=f"{dset.name}-{i + 1}",
+            name=f"{dset.name}" + (f"-{i + 1}" if add_suffix else ""),
             identifier=f"{dset.identifier}-{i + 1}",
             reference=dset.template.format(field=sweep[0, 0]),
             directory=dset.directory,
@@ -160,9 +209,16 @@ def load_experiment(filename: Union[str, Path]) -> Sequence[Experiment]:
             pixel_size=dset.frame.pixel_size,
             detector_size=dset.frame.size,
             detector_origin=dset.frame.center,
+            geometry=dset.frame.geometry,
             delta_angle=dset.frame.delta_angle,
             start_angle=sweep[0, 1],
-            glob=wildcard
+            glob=wildcard,
+            missing=compress_series(
+                numpy.setdiff1d(
+                    numpy.arange(sweep[0, 0], sweep[-1, 0] + 1),
+                    sweep[:, 0], assume_unique=True
+                )
+            )
         )
         for i, sweep in enumerate(sweeps)
     ]
@@ -194,5 +250,37 @@ def lattice_point_groups(characters: Sequence[str]) -> Sequence[str]:
         POINT_GROUPS[character] for character in characters
     ]))
 
-    return [SPACEGROUP_NAMES[point_group] for point_group in point_groups]
+    # use a dictionary to reduce to unique keys, and keep sort order
+    point_groups_dict = {
+        SPACEGROUP_NAMES[point_group]: point_group
+        for point_group in point_groups
+    }
+    return list(point_groups_dict.keys())
 
+
+def spacegroup_character(number: int) -> str:
+    """
+    Determine and return the Bravais lattice character from the given spacegroup number
+    :param number: space group number
+    :return: 2-character string such as "aP", "mC", etc
+    """
+
+    for character, spacegroups in SPACEGROUPS.items():
+        if number in spacegroups:
+            return character
+
+    return "aP"
+
+
+def resolution_shells(resolution: float, count: int = 12) -> ArrayLike:
+    """
+    Calculate resolution shells for the given d-spacing
+    :param resolution: minimum d-spacing
+    :param count: Number of shells
+    :return: array of resolution shells
+    """
+
+    max_angle = 2 * numpy.arcsin(0.5 / resolution)
+    min_angle = 2 * numpy.arcsin(0.5 / 5.0)
+    angles = numpy.linspace(min_angle, max_angle, count)
+    return numpy.round(0.5 / numpy.sin(0.5 * angles), 2)

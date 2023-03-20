@@ -5,13 +5,13 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from importlib.metadata import version, PackageNotFoundError
 from pathlib import Path
-from typing import Sequence, Union
+from typing import Sequence, Union, Dict
 
 import yaml
 
 from mxproc import log
 from mxproc.command import CommandFailed
-from mxproc.common import AnalysisStep, InvalidAnalysisStep, StateType
+from mxproc.common import AnalysisStep, InvalidAnalysisStep, StateType, Result
 from mxproc.experiment import load_multiple, Experiment
 from mxproc.log import logger
 
@@ -32,7 +32,7 @@ class AnalysisOptions:
     directory: Path
     working_directories: dict = field(default_factory=dict)
     anomalous: bool = False
-    merge: bool = False
+    merge: bool = True
 
 
 class Analysis(ABC):
@@ -41,7 +41,7 @@ class Analysis(ABC):
     results: dict  # results for each experiment keyed by experiment identifier
     prefix: str = 'proc'
 
-    def __init__(self, *files, directory: Union[Path, str, None] = None, anomalous: bool = False, merge: bool = False):
+    def __init__(self, *files, directory: Union[Path, str, None] = None, anomalous: bool = False, merge: bool = True):
         """
         Data analysis objects
         :param files: image files corresponding to the datasets to process
@@ -58,8 +58,9 @@ class Analysis(ABC):
                 index += 1
                 directory = Path(f"{self.prefix}-{index}")
 
-        self.options = AnalysisOptions(files=files, directory=Path(directory).absolute(), anomalous=anomalous,
-                                       merge=merge)
+        self.options = AnalysisOptions(
+            files=files, directory=Path(directory).absolute(), anomalous=anomalous, merge=merge
+        )
         self.experiments = load_multiple(files)
         self.results = {}
 
@@ -103,7 +104,7 @@ class Analysis(ABC):
         with gzip.open(meta_file, 'wb') as handle:  # gzip compressed yaml file
             yaml.dump(meta, handle, encoding='utf-8')
 
-    def update_result(self, results: dict, step: AnalysisStep):
+    def update_result(self, results: Dict[str, Result], step: AnalysisStep):
         """
         Update the results dictionary and save a checkpoint meta file
 
@@ -113,22 +114,22 @@ class Analysis(ABC):
 
         for identifier, result in results.items():
             experiment_results = self.results.get(identifier, {})
-            status = result['status']
+            status = result.status
             if status.state in [StateType.SUCCESS, StateType.WARNING]:
                 experiment_results.update({step.name: result})
                 self.results[identifier] = experiment_results
 
         self.save(step)
 
-    def step_succeeded(self, experiment: Experiment, step: AnalysisStep) -> bool:
+    def get_step_result(self, expt: Experiment, step: AnalysisStep) -> Result | None:
         """
         Check if a given analysis step was successfully completed for a given experiment
-        :param experiment: the Experiment to check
+        :param expt: the Experiment to check
         :param step: Analysis step to test
-        :return: boolean
         """
 
-        return step.name in self.results[experiment.identifier]
+        if step.name in self.results[expt.identifier]:
+            return self.results[expt.identifier][step.name]
 
     def run(self, next_step: AnalysisStep = AnalysisStep.INITIALIZE, bootstrap: Union[AnalysisStep, None] = None,
             complete: bool = True):
@@ -176,6 +177,7 @@ class Analysis(ABC):
                 break
 
             try:
+                logger.info_value(step.desc(), '', spacer='-')
                 results = step_method()
             except CommandFailed as err:
                 logger.error(f'Data Processing Failed at {step.name}: {err}. Aborting!')
@@ -197,7 +199,7 @@ class Analysis(ABC):
         ...
 
     @abstractmethod
-    def find_spots(self, **kwargs) -> dict:
+    def find_spots(self, **kwargs) -> Dict[str, Result]:
         """
         Find spots, and prepare for indexing of all experiments
         :param kwargs: keyword argument to tweak spot search
@@ -207,7 +209,7 @@ class Analysis(ABC):
         ...
 
     @abstractmethod
-    def index(self, **kwargs) -> dict:
+    def index(self, **kwargs) -> Dict[str, Result]:
         """
         Perform indexing and refinement of all experiments
         :param kwargs: keyword argument to tweak indexing
@@ -217,7 +219,7 @@ class Analysis(ABC):
         ...
 
     @abstractmethod
-    def integrate(self, **kwargs) -> dict:
+    def integrate(self, **kwargs) -> Dict[str, Result]:
         """
         Perform integration of all experiments.
         :param kwargs: keyword arguments for tweaking the integration settings.
@@ -226,8 +228,8 @@ class Analysis(ABC):
         """
         ...
 
-    # @abstractmethod
-    def symmetry(self, **kwargs) -> dict:
+    @abstractmethod
+    def symmetry(self, **kwargs) -> Dict[str, Result]:
         """
         Determination of Laue group symmetry and reindexing to the selected symmetry for all experiments.
         :param kwargs: keyword arguments for tweaking the symmetry
@@ -237,7 +239,7 @@ class Analysis(ABC):
         ...
 
     # @abstractmethod
-    def scale(self, **kwargs) -> dict:
+    def scale(self, **kwargs) -> Dict[str, Result]:
         """
         performs scaling on integrated datasets for all experiments
         :param kwargs: keyword arguments for tweaking the scaling
@@ -247,7 +249,7 @@ class Analysis(ABC):
         ...
 
     # @abstractmethod
-    def export(self, **kwargs) -> dict:
+    def export(self, **kwargs) -> Dict[str, Result]:
         """
         Export the results of processing into various formats for all experiments
         :param kwargs: keyword arguments for tweaking the export
@@ -257,7 +259,7 @@ class Analysis(ABC):
         ...
 
     # @abstractmethod
-    def report(self, **kwargs) -> dict:
+    def report(self, **kwargs) -> Dict[str, Result]:
         """
         Generate reports of the analysis in TXT and HTML formats for all experiments.
         :param kwargs: keyword arguments for tweaking the reporting
@@ -267,7 +269,7 @@ class Analysis(ABC):
         ...
 
     # @abstractmethod
-    def quality(self, **kwargs) -> dict:
+    def quality(self, **kwargs) -> Dict[str, Result]:
         """
         Check data quality of all experiments.
         :param kwargs: keyword arguments for tweaking quality check

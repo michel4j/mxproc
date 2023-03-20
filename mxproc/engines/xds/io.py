@@ -7,6 +7,7 @@ from typing import Union, Literal, Tuple, Sequence
 import numpy
 
 from mxproc.experiment import Lattice, Experiment
+from mxproc.log import logger
 
 XDSJob = Literal["XYCORR", "INIT", "COLSPOT", "IDXREF",  "DEFPIX", "INTEGRATE", "CORRECT", "ALL"]
 XDSRefinement = Literal["CELL", "BEAM", "ORIENTATION", "AXIS",  "DISTANCE", "POSITION", "SEGMENT", "ALL"]
@@ -16,20 +17,24 @@ XDSRefinement = Literal["CELL", "BEAM", "ORIENTATION", "AXIS",  "DISTANCE", "POS
 class XDSParameters:
     data_range: Tuple[int, int]
     spot_range: Sequence[Tuple[int, int]]
-    format: str = ""
     skip_range: Sequence[Tuple[int, int]] = ()
+
+    format: str = ""
     lattice: Lattice = field(default_factory=Lattice)
     reindex: Sequence[int] | None = None
     reference: Path | None = None
     plugin: str | None = None
-    min_spot_size: int | None = None
-    min_spot_separation: int | None = None
-    cluster_radius: int or None = None
-    strong_sigma: int or None = 4
+
+    spot_separation: float = 1.0
+    spot_size: float = 1.0
+    error_scale: float | None = None
+
+    strong_sigma: int or None = 1
     anomalous: bool = False
     strict_absorption: bool = False
     fixed_scale_factors: bool = False
-    max_profile_error: Tuple[float, float] | None = None
+    invert_spindle: bool = False
+
     message: str = ""
     refine_index: Sequence[XDSRefinement] = ('CELL', 'BEAM', 'ORIENTATION', 'AXIS')
     refine_integrate: Sequence[XDSRefinement] = ('POSITION', 'BEAM', 'ORIENTATION')
@@ -46,6 +51,13 @@ def create_input_file(jobs: Sequence[XDSJob], experiment: Experiment, parameters
 
     detector_name = experiment.detector.upper()
     parameters.format = experiment.format
+
+    # Default parameters
+    max_angle_error: float = 2.0
+    max_pixel_error: float = 3.0
+    spot_size_pixels: float = 6.0
+    spot_gap_pixels: float = 7.0
+
     if 'ADSC' in detector_name:
         detector_type = 'ADSC'
     elif 'RAYONIX' in detector_name:
@@ -54,12 +66,10 @@ def create_input_file(jobs: Sequence[XDSJob], experiment: Experiment, parameters
         detector_type = 'RAXIS'
     elif 'PILATUS' in detector_name:
         detector_type = 'PILATUS'
-        parameters.min_spot_size = 2
+        spot_gap_pixels = 2
     elif 'EIGER' in detector_name:
         detector_type = 'EIGER'
-        parameters.min_spot_size = 3
-        parameters.min_spot_separation = 4
-        parameters.cluster_radius = parameters.min_spot_separation//2
+        spot_gap_pixels = 3
         if experiment.format == "NXmx":
             parameters.format = "GENERIC"
             parameters.plugin = shutil.which('durin-plugin.so')
@@ -69,8 +79,9 @@ def create_input_file(jobs: Sequence[XDSJob], experiment: Experiment, parameters
     else:
         detector_type = 'CCDCHESS'
 
-    two_theta_radians = numpy.radians(experiment.two_theta)
-    detector_y_axis = (0.0, numpy.cos(two_theta_radians), -1 * numpy.sin(two_theta_radians))
+    if parameters.format == 'CBF':
+        parameters.plugin = shutil.which('xds-zcbf.so')
+
     jobs_flag = " ".join(jobs)
     friedel_flag = {True: 'FALSE', False: 'TRUE'}[parameters.anomalous]
     template_path = experiment.directory / experiment.template
@@ -113,8 +124,14 @@ def create_input_file(jobs: Sequence[XDSJob], experiment: Experiment, parameters
             dataset_text += "REIDX= {} {} {} {} {} {} {} {} {} {} {} {}\n".format(*parameters.reindex)
 
     # reference data
-    if parameters.reference is not None:
+    if parameters.reference is not None and parameters.reference.exists():
         dataset_text += f"REFERENCE_DATA_SET=  {parameters.reference}\n"
+
+    beam_axis = experiment.geometry.beam
+    det_xaxis = experiment.geometry.detector[0]
+    det_yaxis = experiment.geometry.detector[1]
+    mult = -1 if parameters.invert_spindle else 1
+    rot_axis = tuple(numpy.array(experiment.geometry.goniometer) * mult)
 
     beamline_text = (
         "!----------------- Beamline parameters\n"
@@ -124,35 +141,40 @@ def create_input_file(jobs: Sequence[XDSJob], experiment: Experiment, parameters
         f"ORGX={experiment.detector_origin.x:5.0f}  ORGY={experiment.detector_origin.y:5.0f}\n"
         f"SENSOR_THICKNESS= {experiment.sensor_thickness:0.3f}\n"
         f"OVERLOAD= {experiment.cutoff_value}\n"
-        f"STRONG_PIXEL= {parameters.strong_sigma:5.0f}\n"
+        f"STRONG_PIXEL= {parameters.strong_sigma:0.1f} ! NOTE: SPOT.XDS managed externally \n"
         "TRUSTED_REGION=0.00 1.2\n"
         "TEST_RESOLUTION_RANGE= 50.0 1.0\n"
         "TOTAL_SPINDLE_ROTATION_RANGES= 90 360 30\n"
         "STARTING_ANGLES_OF_SPINDLE_ROTATION= 0 180 15\n"
         "VALUE_RANGE_FOR_TRUSTED_DETECTOR_PIXELS= 6000 30000\n"
         "INCLUDE_RESOLUTION_RANGE=50.0 0.0\n"
-        "ROTATION_AXIS= 1.0 0.0 0.0\n"
-        "INCIDENT_BEAM_DIRECTION=0.0 0.0 1.0\n"
         "FRACTION_OF_POLARIZATION=0.99\n"
         "POLARIZATION_PLANE_NORMAL= 0.0 1.0 0.0\n"
-        "DIRECTION_OF_DETECTOR_X-AXIS= 1.000 0.000 0.000\n"
-        f"DIRECTION_OF_DETECTOR_Y-AXIS= {detector_y_axis[0]:0.3f} {detector_y_axis[1]:0.3f} {detector_y_axis[2]:0.3f}\n"
+        f"ROTATION_AXIS= {rot_axis[0]:0.3f} {rot_axis[1]:0.3f} {rot_axis[2]:0.3f}\n"
+        f"INCIDENT_BEAM_DIRECTION= {beam_axis[0]:0.3f} {beam_axis[1]:0.3f} {beam_axis[2]:0.3f}\n"
+        f"DIRECTION_OF_DETECTOR_X-AXIS= {det_xaxis[0]:0.3f} {det_xaxis[1]:0.3f} {det_xaxis[2]:0.3f}\n"
+        f"DIRECTION_OF_DETECTOR_Y-AXIS= {det_yaxis[0]:0.3f} {det_yaxis[1]:0.3f} {det_yaxis[2]:0.3f}\n"
     )
 
     extra_text = "!----------------- Extra parameters\n"
     if 'PILATUS' in detector_name:
         extra_text += "NUMBER_OF_PROFILE_GRID_POINTS_ALONG_ALPHA/BETA= 13\n"
-    if parameters.min_spot_separation is not None:
-        extra_text += f'SEPMIN= {parameters.min_spot_separation}\n'
-    if parameters.min_spot_size is not None:
-        extra_text += f'MINIMUM_NUMBER_OF_PIXELS_IN_A_SPOT= {parameters.min_spot_size}\n'
-    if parameters.cluster_radius is not None:
-        extra_text += f'CLUSTER_RADIUS= {parameters.cluster_radius}\n'
+
+    if parameters.spot_separation > 0:
+        min_sep = round(parameters.spot_separation * spot_gap_pixels)
+        extra_text += f'SEPMIN= {min_sep:0.1f}\n'
+        extra_text += f'CLUSTER_RADIUS= {min_sep/2:0.1f}\n'
+
+    if parameters.spot_size > 0:
+        extra_text += f'MINIMUM_NUMBER_OF_PIXELS_IN_A_SPOT= {spot_size_pixels * parameters.spot_size:0.0f}\n'
+
     if parameters.strict_absorption:
         extra_text += 'STRICT_ABSORPTION_CORRECTION= TRUE\n'
+
     if parameters.refine_index:
         refine_flags = ' '.join(parameters.refine_index)
         extra_text += f'REFINE(IDXREF)= {refine_flags}\n'
+
     if parameters.refine_integrate:
         refine_flags = ' '.join(parameters.refine_integrate)
         extra_text += f'REFINE(INTEGRATE)= {refine_flags}\n'
@@ -160,9 +182,10 @@ def create_input_file(jobs: Sequence[XDSJob], experiment: Experiment, parameters
     if parameters.fixed_scale_factors:
         extra_text += f'DATA_RANGE_FIXED_SCALE_FACTOR= {parameters.data_range[0]} {parameters.data_range[1]} 1.0\n'
 
-    if parameters.max_profile_error:
-        extra_text += f'MAXIMUM_ERROR_OF_SPOT_POSITION= {parameters.max_profile_error[0]}\n'
-        extra_text += f'MAXIMUM_ERROR_OF_SPINDLE_POSITION= {parameters.max_profile_error[1]}\n'
+    if parameters.error_scale is not None:
+        extra_text += f'MAXIMUM_ERROR_OF_SPOT_POSITION= {parameters.error_scale * max_pixel_error:0.1f}\n'
+        extra_text += f'MAXIMUM_ERROR_OF_SPINDLE_POSITION= {parameters.error_scale * max_angle_error:0.1f}\n'
+        extra_text += f'INDEX_ERROR= {parameters.error_scale * 0.05: 0.1f}\n'
 
     with open('XDS.INP', 'w') as outfile:
         outfile.write(job_text)
@@ -170,3 +193,105 @@ def create_input_file(jobs: Sequence[XDSJob], experiment: Experiment, parameters
         outfile.write(beamline_text)
         outfile.write(extra_text)
 
+
+def save_spots():
+    """
+    Make a backup of SPOT.XDS in numpy format to be used for indexing
+    """
+
+    spots = numpy.loadtxt('SPOT.XDS')
+    numpy.save('spots', spots)
+
+
+SPOT_COLUMN_FORMATS = {
+    5: ["%0.2f", "%0.2f", "%0.2f", "%0.2f", "%d"],
+    4: ["%0.2f", "%0.2f", "%0.2f", "%0.2f"],
+    7: ["%0.2f", "%0.2f", "%0.2f", "%0.2f", "%d", "%d", "%d"],
+    8: ["%0.2f", "%0.2f", "%0.2f", "%0.2f", "%d", "%d", "%d", "%d"],
+}
+
+
+def filter_spots(
+        min_sigma: Union[float, None] = None,
+        max_sigma: Union[float, None] = None,
+        exclude_frames: Tuple = (),
+):
+    """
+    Create a SPOT.XDS file from a spots.hkl file filtering based on several parameters
+    :param min_sigma: select spots with sigma higher than this value
+    :param max_sigma: select spots with sigma lower than this value
+    :param exclude_frames:  Exclude spots from specified frames
+    """
+
+    spots = numpy.load('spots.npy')
+    selected = numpy.ones_like(spots[:, 0]).astype(bool)
+    sigma = spots[:, 3]
+    num_columns = len(spots[0])
+    frames = numpy.round(spots[:, 2]).astype(int)
+
+    if min_sigma is not None:
+        selected &= sigma > (min_sigma + 2)
+    if max_sigma is not None:
+        selected &= sigma < max_sigma
+
+    excluded = (frames < 0)   # start with none excluded
+    for start, end in exclude_frames:
+        excluded |= ((frames >= start) & (frames <= end))
+
+    if excluded.sum():
+        selected &= ~excluded
+
+    logger.info_value("- Selected Number Spots for Indexing", f"{selected.sum()}")
+    numpy.savetxt("SPOT.XDS", spots[selected, :], fmt=SPOT_COLUMN_FORMATS[num_columns])
+
+
+def write_xscale_input(params: Sequence[dict]):
+    """
+    Create XSCALE.INP file using parameters in the dictionary params
+
+    params = [ {
+            'reindex_matrix': tuple of 12 ints, optional
+            'space_group': int, optional
+            'unit_cell': tuple of 6 floats, optional
+            'anomalous': bool
+            'output_file': str
+            'crystal': str
+            'inputs': list of [{'input_file': str, 'resolution': float, 'reference':bool}]
+        }]
+    """
+
+    header = "!-XSCALE.INP--------File generated by auto.process \n"
+
+    body = ""
+    shells = []
+    friedel = 'FALSE' if params[0].get('anomalous') else 'TRUE'
+
+    for i, section in enumerate(params):
+        body += "OUTPUT_FILE={}\n".format(section['output_file'])
+        if section.get('reindex_matrix'):
+            body += "REIDX={:2d} {:2d} {:2d} {:2d} {:2d} {:2d} {:2d} {:2d} {:2d} {:2d} {:2d} {:2d}\n".format(
+                *section['reindex_matrix'])
+        if section.get('space_group') and section.get('unit_cell'):
+            body += "SPACE_GROUP_NUMBER={:d} \n".format(section['space_group'])
+            body += "UNIT_CELL_CONSTANTS={:6.2f} {:6.2f} {:6.2f} {:4.2f} {:4.2f} {:4.2f} \n".format(
+                *section['unit_cell'])
+        body += f"FRIEDEL'S_LAW={friedel}\n"
+
+        if i == 0:
+            shells = section.get('shells')
+        elif section.get('shells')[-1] < shells[-1]:
+            shells = section.get('shells')
+
+        for section_input in section['inputs']:
+            star = '*' if section_input.get('reference', False) else ' '
+            body += "INPUT_FILE={}{} \n".format(star, section_input['input_file'])
+            body += "INCLUDE_RESOLUTION_RANGE= 50 {:5.2f}\n".format(section_input.get('resolution', 0.0))
+            if section.get('crystal'):
+                body += "CRYSTAL_NAME={}\n".format(section['crystal'])
+
+    if len(shells) and (shells[-1] - shells[0]) > 4:
+        header += 'RESOLUTION_SHELLS= {}\n'.format(' '.join([f'{x:0.2f}' for x in shells]))
+
+    file_text = header + body + "!-------------------File generated by auto.process \n"
+    with open('XSCALE.INP', 'w') as outfile:
+        outfile.write(file_text)
