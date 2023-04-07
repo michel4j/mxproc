@@ -23,46 +23,37 @@ def get_strategy(results):
     return info
 
 
-def screening_summary(analysis: Analysis) -> dict:
+def screening_summary(analysis: Analysis, experiment: Experiment) -> dict:
     """
     Generate the summary table for the provided list of datasets
     :param analysis: list of dataset dictionaries
+    :param experiment: Experiment to display
     :return: dictionary of table specification
     """
 
-    indexing = None
-    experiment = None
-    strategy = None
-    for experiment in analysis.experiments:
-        indexing = analysis.get_step_result(experiment, StepType.INDEX)
-        strategy = analysis.get_step_result(experiment, StepType.STRATEGY)
-        if indexing is None:
-            continue
-        else:
-            break
+    indexing = analysis.get_step_result(experiment, StepType.INDEX)
+    strategy = analysis.get_step_result(experiment, StepType.STRATEGY)
 
-    if indexing is None or experiment is None:
+    if indexing is None or strategy is None:
         return {}
-
     else:
         lattice = indexing.get("lattice", Lattice())
         return {
             'title': 'Data Quality Statistics',
             'kind': 'table',
             'data': [
-                ['Observed Parameters', ''],
                 ['Score¹', f'{strategy.get("quality.score"):0.2f}'],
-                ['Wavelength (Å)', f'{experiment.wavelength:0.5g}'],
-                ['Compatible Point Groups', " ".join(indexing.get('point_groups'))],
+                ['Wavelength', f'{experiment.wavelength:0.5g} Å'],
+                ['Compatible Point Groups', ", ".join(indexing.get('point_groups'))],
                 ['Reduced Cell²', f'{lattice.cell_text()}'],
-                ['Mosaicity', f'{strategy.get("quality.mosaicity", -1):0.2f}'],
-                ['Resolution (Å)³', f'{strategy.get("quality.resolution"):0.1f}'],
-                ['Pixel Error', f'{indexing.get("quality.pixel_error.", -1)}'],
-                ['Angle Error', f'{indexing.get("quality.angle_error.", -1)}'],
-                ['Expected Quality', ''],
-                ['Resolution (Å)', f'{strategy.get("strategy.resolution"):0.1f}'],
-                ['Completeness⁴', f'{strategy.get("strategy.completeness"):0.1f} %'],
-                ['Multiplicity⁴', f'{strategy.get("strategy.multiplicity", -1):0.2f}'],
+                ['Mosaicity', f'{strategy.get("quality.mosaicity"):0.2f}°'],
+                ['Diffraction Resolution³', f'{strategy.get("quality.resolution"):0.1f} Å'],
+                ['Profile Error (position)', f'{indexing.get("quality.pixel_error")} px'],
+                ['Profile Error (angle)', f'{indexing.get("quality.angle_error", -1)}°'],
+                ['', ''],
+                ['Expected Resolution', f'{strategy.get("strategy.resolution"):0.1f} Å'],
+                ['Expected Completeness⁴', f'{strategy.get("strategy.completeness"):0.1f} %'],
+                ['Expected Multiplicity⁴', f'{strategy.get("strategy.multiplicity"):0.2f}'],
             ],
             'header': 'column',
             'notes': inspect.cleandoc("""
@@ -79,23 +70,21 @@ def screening_summary(analysis: Analysis) -> dict:
         }
 
 
-def screening_strategy(analysis: Analysis, experiment: Experiment):
-    strategy = analysis.get_step_result(experiment, StepType.STRATEGY)
-
+def screening_strategy(strategy):
     return {
         'title': 'Suggested Data Acquisition Strategy',
         'kind': 'table',
         'header': 'column',
         'data': [
-            ['Max Detector Resolution', f'{strategy.get("strategy.max_resolution"):0.2f}'],
-            ['Attenuation', f'{strategy.get("strategy.attenuation"):0.2f} %'],
-            ['Start Angle', f'{strategy.get("strategy.start_angle"):0.2f} deg'],
-            ['Maximum Delta Angle¹', f'{strategy.get("strategy.max_delta"):0.2f}'],
-            ['Minimum Total Angle Range²', f'{strategy.get("strategy.total_angle"):0.2f}'],
-            ['Exposure Rate Avg (sec/deg)³', f'{strategy.get("strategy.exposure_rate"):0.2f}'],
-            ['Exposure Rate Low (dec/deg)³', f'{strategy.get("strategy.exposure_rate_worst"):0.2f}'],
-            ['Total Exposure Time (sec)', f'{strategy.get("strategy.total_exposure"):0.2f}'],
-            ['Total Worst Case Exposure Time (sec)', f'{strategy.get("strategy.total_exposure_worst"):0.2f}'],
+            ['Recommended Detector Limit', f'{strategy.get("strategy.max_resolution"):0.2f} Å'],
+            ['Attenuation', f'{strategy.get("strategy.attenuation"):0.2f}%'],
+            ['Start Angle', f'{strategy.get("strategy.start_angle"):0.2f}°'],
+            ['Maximum Delta Angle¹', f'{strategy.get("strategy.max_delta"):0.2f}°'],
+            ['Minimum Total Angle Range²', f'{strategy.get("strategy.total_angle"):0.2f}°'],
+            ['Exposure Rate Avg ³', f'{strategy.get("strategy.exposure_rate"):0.2f} "/°'],
+            ['Exposure Rate Low³', f'{strategy.get("strategy.exposure_rate_worst"):0.2f} "/°'],
+            ['Total Exposure Time', f'{strategy.get("strategy.total_exposure"):0.2f}"'],
+            ['Total Worst Case Exposure Time', f'{strategy.get("strategy.total_exposure_worst"):0.2f}"'],
         ],
         'notes': inspect.cleandoc("""
             1. This is the maximum delta-angle to be collected in order to avoid overlaps. Note that
@@ -104,34 +93,31 @@ def screening_strategy(analysis: Analysis, experiment: Experiment):
             2. Minimum angle range for complete data. This is the bare minimum and it is strongly recommended to 
                to collect a full 180 degrees of data and often even more.
             3. Use the Avg exposure rate for Helical data collection. Use the Low exposure rate if the crystal will
-               not be translated during the experiment.
+               not be translated during the experiment. Dose estimates make use of RADDOSE-3D: 
+               see Bury et al PROTEIN SCIENCE 2018 VOL 27:217—228, https://doi.org/10.1002/pro.3302
              """),
     }
 
 
-def screening_completeness(analysis: Analysis, experiment: Experiment):
-    strategy = analysis.get_step_result(experiment, StepType.STRATEGY)
+def screening_completeness(strategy):
     plots = defaultdict(list)
     for entry in strategy.get('statistics', []):
         total_range = int(entry['end_angle'] - entry['start_angle'])
         plots[total_range].append((entry['start_angle'], entry['completeness']))
+    x_values = [x for x, y in next(iter(plots.values()))]
 
     return {
-        'title': 'Detailed Screening Analysis',
-        'content': [
-            {
-                'title': 'Minimal Range for Complete Data Acquisition',
-                'kind': 'lineplot',
-                'data': {
-                    'x': ['Start Angle (deg)'] + plots.values()[0],
-                    'y1': [
-                        [f'{total} (deg)'] + values for total, values in plots.items()
-                    ],
-                    'y1-label': 'Completeness (%)'
-                },
-                'notes': "The above plot was calculated by XDS. See W. Kabsch, Acta Cryst. (2010). D66, 125-132."
-            },
-        ]
+        'title': 'Minimal Range for Complete Data Acquisition',
+        'kind': 'lineplot',
+        'data': {
+            'x': ['Start Angle'] + x_values,
+            'y1': [
+                [f'{total}°'] + [y for x, y in values]
+                for total, values in plots.items()
+            ],
+            'y1-label': 'Completeness (%)'
+        },
+        'notes': "The above plot was calculated by XDS. See W. Kabsch, Acta Cryst. (2010). D66, 125-132."
     }
 
 

@@ -1,4 +1,5 @@
 import gzip
+import os
 import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
@@ -11,8 +12,8 @@ import yaml
 
 from mxproc import log
 from mxproc.command import CommandFailed
-from mxproc.common import AnalysisStep, InvalidAnalysisStep, StateType, Result
-from mxproc.experiment import load_multiple, Experiment
+from mxproc.common import StepType, InvalidAnalysisStep, StateType, Result, Workflow, logistic
+from mxproc.xtal import load_multiple, Experiment
 from mxproc.log import logger
 
 __all__ = [
@@ -26,45 +27,99 @@ except PackageNotFoundError:
     __version__ = "Dev"
 
 
+# Links Analysis steps to the next step in the sequence
+WORKFLOWS = {
+    Workflow.SCREEN: {
+        StepType.INITIALIZE: StepType.SPOTS,
+        StepType.SPOTS: StepType.INDEX,
+        StepType.INDEX: StepType.STRATEGY,
+        StepType.STRATEGY: StepType.REPORT,
+    },
+    Workflow.PROCESS: {
+        StepType.INITIALIZE: StepType.SPOTS,
+        StepType.SPOTS: StepType.INDEX,
+        StepType.INDEX: StepType.INTEGRATE,
+        StepType.INTEGRATE: StepType.SYMMETRY,
+        StepType.SYMMETRY: StepType.SCALE,
+        StepType.SCALE: StepType.EXPORT,
+        StepType.EXPORT: StepType.REPORT,
+    }
+}
+
+
 @dataclass
 class AnalysisOptions:
     files: Sequence[str]
     directory: Path
     working_directories: dict = field(default_factory=dict)
+    screen: bool = False
     anomalous: bool = False
     merge: bool = True
+    multi: bool = False
+    extras: dict = field(default_factory=dict)
 
 
 class Analysis(ABC):
     experiments: Sequence[Experiment]
     options: AnalysisOptions
-    results: dict  # results for each experiment keyed by experiment identifier
+    results: dict   # results for each experiment keyed by experiment identifier
+    settings: dict  # Settings dictionary can be used for saving and recovering non-experiment specific information
+    workflow: Workflow
+    methods: dict   # Dictionary mapping steps to corresponding method
+
     prefix: str = 'proc'
 
-    def __init__(self, *files, directory: Union[Path, str, None] = None, anomalous: bool = False, merge: bool = True):
+    def __init__(
+            self,
+            *files: str,
+            directory: Union[Path, str, None] = None,
+            screen: bool = False,
+            anomalous: bool = True,
+            merge: bool = True
+    ):
         """
         Data analysis objects
         :param files: image files corresponding to the datasets to process
         :param directory: top-level working directory, subdirectories may be created within for some processing options
+        :param screen: Whether this is a screening analysis
         :param anomalous: Whether to process as anomalous data
         :param merge:  Whether to merge the datasets into a single output file or to keep them separate
         """
 
-        # Prepare directory
+        # Prepare working directory
         if directory in ["", None]:
             index = 1
             directory = Path(f"{self.prefix}-{index}")
             while directory.exists():
                 index += 1
                 directory = Path(f"{self.prefix}-{index}")
+        directory = Path(directory).absolute()
 
-        self.options = AnalysisOptions(
-            files=files, directory=Path(directory).absolute(), anomalous=anomalous, merge=merge
-        )
         self.experiments = load_multiple(files)
-        self.results = {}
+        merge &= len(self.experiments) > 1
+        self.options = AnalysisOptions(
+            files=files, directory=directory, screen=screen, anomalous=anomalous, merge=merge,
+            multi=(len(self.experiments) > 1 and not merge)
+        )
 
-    def load(self, step: AnalysisStep):
+        self.results = {}
+        self.settings = {}
+
+        # workflow
+        self.workflow = Workflow.SCREEN if self.options.screen else Workflow.PROCESS
+        self.methods = {
+            StepType.INITIALIZE: self.initialize,
+            StepType.SPOTS: self.find_spots,
+            StepType.INDEX: self.index,
+            StepType.STRATEGY: self.strategy,
+            StepType.INTEGRATE: self.integrate,
+            StepType.SYMMETRY: self.symmetry,
+            StepType.SCALE: self.scale,
+            StepType.EXPORT: self.export,
+            StepType.REPORT: self.report
+        }
+
+    def load(self, step: StepType):
         """
         Load an Analysis from a meta file and reset the state to it.
         :param step: analysis step corresponding to the saved metadata
@@ -78,22 +133,24 @@ class Analysis(ABC):
             self.options = meta['options']
             self.experiments = meta['experiments']
             self.results = meta['results']
+            self.settings = meta['settings']
 
         except FileNotFoundError:
             raise InvalidAnalysisStep('Checkpoint file missing. Must be loaded from working directory.')
         except (ValueError, TypeError, KeyError):
             raise InvalidAnalysisStep('Checkpoint file corrupted')
 
-    def save(self, step: AnalysisStep, backup: bool = False):
+    def save(self, step: StepType, backup: bool = False):
         """
         Save analysis data to file
-        :param backup: Whether to backuup existing files, by default overwrite
+        :param backup: Whether to backup existing files, by default overwrite
         :param step: analysis step corresponding to the saved metadata
         """
         meta = {
             'options': self.options,
             'experiments': self.experiments,
-            'results': self.results
+            'results': self.results,
+            'settings': self.settings
         }
         meta_file = self.options.directory / f'{step.slug()}.meta'
 
@@ -104,7 +161,7 @@ class Analysis(ABC):
         with gzip.open(meta_file, 'wb') as handle:  # gzip compressed yaml file
             yaml.dump(meta, handle, encoding='utf-8')
 
-    def update_result(self, results: Dict[str, Result], step: AnalysisStep):
+    def update_result(self, results: Dict[str, Result], step: StepType):
         """
         Update the results dictionary and save a checkpoint meta file
 
@@ -114,14 +171,13 @@ class Analysis(ABC):
 
         for identifier, result in results.items():
             experiment_results = self.results.get(identifier, {})
-            status = result.status
-            if status.state in [StateType.SUCCESS, StateType.WARNING]:
+            if result.state in [StateType.SUCCESS, StateType.WARNING]:
                 experiment_results.update({step.name: result})
                 self.results[identifier] = experiment_results
 
         self.save(step)
 
-    def get_step_result(self, expt: Experiment, step: AnalysisStep) -> Result | None:
+    def get_step_result(self, expt: Experiment, step: StepType) -> Result | None:
         """
         Check if a given analysis step was successfully completed for a given experiment
         :param expt: the Experiment to check
@@ -131,51 +187,45 @@ class Analysis(ABC):
         if step.name in self.results[expt.identifier]:
             return self.results[expt.identifier][step.name]
 
-    def run(self, next_step: AnalysisStep = AnalysisStep.INITIALIZE, bootstrap: Union[AnalysisStep, None] = None,
-            complete: bool = True):
+    @abstractmethod
+    def score(self, expt: Experiment) -> float:
+        """
+        Calculate and return a data quality score for the specified experiment
+
+        :param expt: experiment
+        :return: float
+        """
+
+    def run(
+            self,
+            step: StepType = StepType.INITIALIZE,
+            bootstrap: StepType | None = None,
+            single: bool = False
+    ):
         """
         Perform the analysis and gather the harvested results
         :param bootstrap: analysis step to use as a basis from the requested step. Must be higher than the previous workflow step
-        :param complete: Whether to run the full analysis from this step to the end of the workflow
-        :param next_step: AnalysisStep to run
+        :param single: Whether to run the full analysis from this step to the end of the workflow
+        :param step: AnalysisStep to run
         """
 
-        workflow = {
-            AnalysisStep.INITIALIZE: self.initialize,
-            AnalysisStep.SPOTS: self.find_spots,
-            AnalysisStep.INDEX: self.index,
-            AnalysisStep.INTEGRATE: self.integrate,
-            AnalysisStep.SYMMETRY: self.symmetry,
-            AnalysisStep.SCALE: self.scale,
-            AnalysisStep.QUALITY: self.quality,
-            AnalysisStep.EXPORT: self.export,
-            AnalysisStep.REPORT: self.report
-        }
-
         # If anything other than initialize, load the previous metadata and use that
-        if next_step.value > 0:
-            if bootstrap is None:
-                # load meta data from previous step
-                self.load(AnalysisStep(next_step.value - 1))
-            elif bootstrap.value >= next_step.value - 1:
-                # load if it is at least greater than the previous step from the requested one
-                self.load(bootstrap)
+        if step != StepType.INITIALIZE:
+            bootstrap = step.prev() if bootstrap is None else bootstrap   # use previous if none
+            self.load(bootstrap)
 
         start_time = time.time()
-        header = f'MX Auto Processing (version: {__version__})'
-        sub_header = "{} [{:d} dataset(s)]".format(datetime.now().isoformat(), len(self.experiments))
+        header = f'MX Auto Proces (version: {__version__})'
+        sub_header = f"{datetime.now().isoformat()} {self.workflow.desc()} [{len(self.experiments):d} dataset(s)]"
         logger.banner(header)
         logger.banner(sub_header, overline=False, line='-')
 
-        for step, step_method in workflow.items():
-            # skip all steps prior to requested_step
-            if step < next_step:
-                continue
+        while step is not None:
+            # always go back to top-level working directory
+            if self.options.directory.exists():
+                os.chdir(self.options.directory)
 
-            # do not run subsequent steps if complete is False
-            if step > next_step and not complete:
-                break
-
+            step_method = self.methods.get(step)
             try:
                 logger.info_value(step.desc(), '', spacer='-')
                 results = step_method()
@@ -184,11 +234,14 @@ class Analysis(ABC):
                 break
             else:
                 # REPORTING step does not have results
-                if step != AnalysisStep.REPORT and results:
+                if step != StepType.REPORT and results:
                     self.update_result(results, step)
 
+            # select the next step in the workflow
+            step = None if single else WORKFLOWS[self.workflow].get(step)
+
         used_time = time.strftime('%H:%M:%S', time.gmtime(time.time() - start_time))
-        logger.banner(f'Processing done. Duration: {used_time}', line='-')
+        logger.banner(f'Processing Duration: {used_time}', line='-')
 
     @abstractmethod
     def initialize(self, **kwargs):
@@ -219,6 +272,16 @@ class Analysis(ABC):
         ...
 
     @abstractmethod
+    def strategy(self, **kwargs) -> Dict[str, Result]:
+        """
+        Perform Strategy determination and refinement of all experiments
+        :param kwargs: keyword argument to tweak indexing
+        :return: a dictionary, the keys are experiment identifiers and values are dictionaries containing
+        harvested results from each dataset.
+        """
+        ...
+
+    @abstractmethod
     def integrate(self, **kwargs) -> Dict[str, Result]:
         """
         Perform integration of all experiments.
@@ -238,7 +301,7 @@ class Analysis(ABC):
         """
         ...
 
-    # @abstractmethod
+    @abstractmethod
     def scale(self, **kwargs) -> Dict[str, Result]:
         """
         performs scaling on integrated datasets for all experiments
@@ -248,7 +311,7 @@ class Analysis(ABC):
         """
         ...
 
-    # @abstractmethod
+    @abstractmethod
     def export(self, **kwargs) -> Dict[str, Result]:
         """
         Export the results of processing into various formats for all experiments
@@ -258,21 +321,11 @@ class Analysis(ABC):
         """
         ...
 
-    # @abstractmethod
+    @abstractmethod
     def report(self, **kwargs) -> Dict[str, Result]:
         """
         Generate reports of the analysis in TXT and HTML formats for all experiments.
         :param kwargs: keyword arguments for tweaking the reporting
-        :return: a dictionary, the keys are experiment identifiers and values are dictionaries containing
-        harvested results from each dataset.
-        """
-        ...
-
-    # @abstractmethod
-    def quality(self, **kwargs) -> Dict[str, Result]:
-        """
-        Check data quality of all experiments.
-        :param kwargs: keyword arguments for tweaking quality check
         :return: a dictionary, the keys are experiment identifiers and values are dictionaries containing
         harvested results from each dataset.
         """

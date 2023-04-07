@@ -1,6 +1,6 @@
 import xml.dom.minidom
 from typing import Sequence
-from mxproc.experiment import Lattice, SPACEGROUP_NAMES
+from mxproc.xtal import Lattice, SPACEGROUP_NAMES
 
 
 def get_spacegroup(element: xml.dom.minidom.Element) -> dict:

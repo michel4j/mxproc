@@ -3,35 +3,19 @@
 import os
 import argparse
 import logging
-from pathlib import Path
+
 from mxproc.engines import xds, dials
-from mxproc import log, AnalysisStep
+from mxproc.common import StepType
+from mxproc import log
 
-EXAMPLES = """
-Examples:
 
-    auto.spots 
-        Find spots and continue with indexing
-
-    auto.spots -x
-        Find spots and stop
-
-"""
-
-parser = argparse.ArgumentParser(
-    description='Find Strong Spots', epilog=EXAMPLES, formatter_class=argparse.RawDescriptionHelpFormatter
-)
+parser = argparse.ArgumentParser(description='Find Strong Spots')
 prog_group = parser.add_mutually_exclusive_group()
 prog_group.add_argument('--xds', action='store_true', default=True, help="Use XDS for processing")
 prog_group.add_argument('--dials', action='store_true', default=False, help="Use DIALS for processing")
-prog_group.add_argument('--mosflm', action='store_true', default=False, help="Use MOSFLM for processing")
 
-parser.add_argument(
-    '-d', '--dir', type=str, help="Directory to store output files. If not provided a new one is created"
-)
-parser.add_argument(
-    '-x', '--stop', action='store_true', default=False, help="Don't continue processing after this step."
-)
+parser.add_argument('-d', '--dir', type=str, help="Working directory.")
+parser.add_argument('-1', '--single', action='store_true', default=False, help="Don't continue processing after this")
 
 if __name__ == "__main__":
     log.log_to_console(logging.DEBUG)
@@ -42,6 +26,4 @@ if __name__ == "__main__":
         Analysis = xds.XDSAnalysis
 
     proc = Analysis(directory=args.dir)
-    if args.dir:
-        os.chdir(args.dir)
-    proc.run(next_step=AnalysisStep.SPOTS, complete=not args.stop)
+    proc.run(step=StepType.SPOTS, single=not args.stop)

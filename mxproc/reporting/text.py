@@ -2,8 +2,6 @@ import subprocess
 
 from prettytable import PrettyTable
 
-from mxproc.reporting import heading
-
 
 def plot(data, plot_type='linespoints', style='full-height'):
     raw_data = [data['x']]
@@ -90,3 +88,11 @@ def text_report(report):
             output.append(section['notes'] + '\n')
 
     return '\n'.join(output)
+
+
+def heading(text, level):
+    if level in [1, 2]:
+        underline = {1: '=', 2: '-'}[level]
+        return '\n{}\n{}'.format(text.title(), underline * len(text))
+    else:
+        return '\n{} {}'.format('#' * level, text)

@@ -1,0 +1,26 @@
+root:
+  sections:
+    summary:
+      fields:
+        - "Completeness with d_max=infinity: <float:completeness>"
+        - "Best guess :<int:asu_residues> residues in the asu"
+        - "Mean anomalous difference: <float:anom_completeness>"
+        - "Anomalous completeness in resolution range: <float:anom_completeness>"
+
+    twinning:
+      fields:
+        - "  Mean |L|   :<float:l_statistic> (untwinned: <float:l_statistic>; perfect twin: <float:l_statistic>)"
+        - "Multivariate Z score L-test: <float:l_zscore>"
+
+      sections:
+        laws:
+          domain: "Twinning and intensity statistics summary(.+?)Patterson analyses"
+          table:  "| <char:operator:8> | <char:type:4> | <float:r_obs> | <float:britton_alpha> | <float:H_alpha> | <float:ML_alpha> |"
+
+        l_test:
+          domain: "TABLE: L test(.+?)\n\n"
+          table: "<float:abs_l> <float:observed> <float:untwinned> <float:twinned>"
+
+        plots:
+          domain: "TABLE: Intensity plots(.+?)\n\n"
+          table: "<float:inv_res_sq> <float:mean_i> <float:mean_i_binned> <float:expected_i>"

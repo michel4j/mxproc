@@ -1,18 +1,30 @@
 root:
   fields:
     - "!!! ERROR<str:error_code> !!! <str:failure>"
-    - "R-FACTORS FOR INTENSITIES OF DATA SET <slug:input_file>"
     - "STATISTICS OF SCALED OUTPUT DATA SET : <slug:output_file> "
+    - "SPACE_GROUP_NUMBER=  <int:spacegroup>"
+    - "UNIT_CELL_CONSTANTS= <float:unit_cell> <float:unit_cell> <float:unit_cell> <float:unit_cell> <float:unit_cell> <float:unit_cell>"
+
   sections:
     statistics:
-      domain: "STATISTICS OF SCALED OUTPUT DATA SET .*? WITH SIGNAL/NOISE >= -3.0(.+?)STATISTICS OF INPUT DATA SET"
+      domain: "STATISTICS OF SCALED OUTPUT DATA SET .*? WITH SIGNAL/NOISE >= -3.0(.+?)========== "
       table: " <float:shell> <int:observed> <int:unique> <int:possible> <float:completeness>% <float:r_obs>% <float:r_exp>% <int:compared> <float:i_sigma> <float:r_meas>% <float:cc_half><char:signif> <int:cor_ano><char:asignif> <float:sig_ano> <int:Nano>"
 
     summary:
-      domain: "STATISTICS OF SCALED OUTPUT DATA SET .*? WITH SIGNAL/NOISE >= -3.0(.+?)STATISTICS OF INPUT DATA SET"
+      domain: "STATISTICS OF SCALED OUTPUT DATA SET .*? WITH SIGNAL/NOISE >= -3.0(.+?)========== "
       fields:
         - "    total <int:observed> <int:unique> <int:possible> <float:completeness>% <float:r_obs>% <float:r_exp>% <int:compared> <float:i_sigma> <float:r_meas>% <float:cc_half><char:signif> <int:cor_ano><char:asignif> <float:sig_ano> <int:Nano>"
+        - " <int:misfits> OUT OF <int:reflections> REFLECTIONS REJECTED"
+
+    datasets:
+      domain: "READING INPUT REFLECTION DATA FILES(.+?)OVERALL SCALING"
+      table:
+        - " <int:index> <float:avg_intensity> <int:accepted> <int:rejected>  <slug:name>/XDS_ASCII.HKL"
 
     correlations:
       domain: "CORRELATIONS BETWEEN INPUT DATA SETS AFTER CORRECTIONS(.+?)CORRECTION FACTORS AS FUNCTION OF IMAGE NUMBER & RESOLUTION"
       table: "<int:i> <int:j> <int:num> <float:corr> <float:int_ratio> <float:b_factor>"
+
+    wilson:
+      domain: "WILSON STATISTICS OF SCALED DATA SET(.+?)HIGHER ORDER MOMENTS OF WILSON"
+      table: "<int:reflections:8> <float:resolution:9> <float:inv_res_sq:7> <float:mean_i:11> <float:log_mean_i:11> <float:BO:9>"

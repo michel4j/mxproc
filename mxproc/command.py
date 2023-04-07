@@ -1,7 +1,7 @@
 import asyncio
 import subprocess
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Union
 
@@ -46,12 +46,12 @@ class Command:
                     spinner.update()
                     await asyncio.sleep(.05)
             elapsed = time.time() - start_time
-
+            elapsed_str = f'[{timedelta(seconds=round(elapsed))}]'
             if proc.returncode != 0:
-                logger.error_value(f"{self.label} [FAILED]", f"{elapsed:0.0f}s")
+                logger.error_value(f"{self.label} [FAILED]", elapsed_str, spacer=' ')
                 raise subprocess.CalledProcessError(proc.returncode, self.shell_cmd)
             else:
-                logger.info_value(f"{self.label}", f"{elapsed:0.0f}s")
+                logger.info_value(f"{self.label}", elapsed_str, spacer=' ')
 
     def run_sync(self):
         """

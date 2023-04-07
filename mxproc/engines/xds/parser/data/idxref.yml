@@ -35,7 +35,7 @@ root:
 
     delta_overlaps:
       domain: "Maximum oscillation range to prevent angular overlap(.+?)cpu time used"
-      table: " <float:overlaps> <float:overlaps>\n"
+      table: " <float:delta> <float:resolution>\n"
 
     cluster_indices:
       domain: " CLUSTER COORDINATES AND INDICES WITH RESPECT TO REC(.+?)PARAMETERS OF THE REDUCED CELL"

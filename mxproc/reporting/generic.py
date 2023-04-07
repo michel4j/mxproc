@@ -1,9 +1,42 @@
 import inspect
+import numpy as np
 
-import numpy
-
-from mxproc import Analysis, StepType, Experiment
+from mxproc import Analysis
+from mxproc.common import StepType, Result
 from mxproc.xtal import Lattice
+from mxproc.xtal import lattice_point_groups
+
+
+def add_summary_column(report, target, name, wavelength):
+    multiplicity = target.get('quality.summary.observed', 0) / target.get('quality.summary.unique', 1)
+    lattice = target.get("lattice", Lattice())
+    mosaicity = target.get("quality.summary.mosaicity")
+    completeness = target.get("quality.summary.completeness", 0)
+    anom_completeness = target.get("quality.summary.anom_completeness", 0)
+
+    report['data'][0].append(name)
+    report['data'][1].append(f'{target.get("quality.summary.score", 0.0):0.2f}')
+    report['data'][2].append(f'{wavelength:0.5g} Å')
+    report['data'][3].append(f'{lattice.name} ({lattice.spacegroup})')
+    report['data'][4].append(f'{lattice.cell_text()}')
+    report['data'][5].append(f'{target.get("quality.summary.resolution", 20.):0.2f} Å')
+    report['data'][6].append(f'{target.get("quality.summary.observed", 0)}')
+    report['data'][7].append(f'{target.get("quality.summary.unique", 0)}')
+    report['data'][8].append(f'{multiplicity:0.1f}')
+    report['data'][9].append(f'{completeness:0.1f} ({anom_completeness:0.1f}) %')
+    if mosaicity is not None:
+        report['data'][10].append(f'{mosaicity:0.2f}')
+    else:
+        report['data'][10].append('N/A')
+
+    report['data'][11].append(f'{target.get("quality.summary.i_sigma", -99):0.1f}')
+    report['data'][12].append(f'{target.get("quality.summary.r_meas", -99):0.1f}')
+    report['data'][13].append(f'{target.get("quality.summary.cc_half", -99):0.1f} %')
+    i_sigma_a = target.get("quality.summary.i_sigma_a")
+    if i_sigma_a is not None:
+        report['data'][14].append(f'{i_sigma_a:0.1f}')
+    else:
+        report['data'][14].append('N/A')
 
 
 def summary_table(analysis: Analysis):
@@ -22,7 +55,7 @@ def summary_table(analysis: Analysis):
             ['Wavelength (A)'],
             ['Space Group²'],
             ['Unit Cell (A)'],
-            ['Resolution⁶'],
+            ['Resolution'],
             ['All Reflections'],
             ['Unique Reflections'],
             ['Multiplicity'],
@@ -49,77 +82,60 @@ def summary_table(analysis: Analysis):
         """)
     }
     res_method = -1
+    scaling = None
+    wavelength = 0
 
     for experiment in analysis.experiments:
-        result = analysis.get_step_result(experiment, StepType.SCALE)
+
+        scaling = analysis.get_step_result(experiment, StepType.SCALE)
         symmetry = analysis.get_step_result(experiment, StepType.SYMMETRY)
-        if not result:
+        wavelength = experiment.wavelength
+
+        if not scaling:
             continue
 
-        multiplicity = result.get('quality.summary.observed', 0) / result.get('quality.summary.unique', 1)
-        res_method = result.get('quality.summary.resolution_method', '')
-        lattice = result.get("lattice", Lattice())
-        mosaicity = result.get("quality.summary.mosaicity")
-        completeness = result.get("quality.summary.completeness", 0)
-        anom_completeness = result.get("quality.summary.anom_completeness", 0)
-
-        i_sigma_a = symmetry.get("quality.summary.i_sigma_a")
-
-        report['data'][0].append(experiment.name)
-        report['data'][1].append(f'{result.get("quality.summary.score", 0.0):0.2f}')
-        report['data'][2].append(f'{experiment.wavelength:0.5g}')
-        report['data'][3].append(f'{lattice.name} ({lattice.spacegroup})')
-        report['data'][4].append(f'{lattice.cell_text()}')
-        report['data'][5].append(f'{result.get("quality.summary.resolution", 20.):0.2f}')
-        report['data'][6].append(f'{result.get("quality.summary.observed", 0)}')
-        report['data'][7].append(f'{result.get("quality.summary.unique", 0)}')
-        report['data'][8].append(f'{multiplicity:0.1f}')
-        report['data'][9].append(f'{completeness:0.1f} ({anom_completeness:0.1f}) %')
-        if mosaicity is not None:
-            report['data'][10].append(f'{mosaicity:0.2f}')
+        if analysis.options.merge:
+            add_summary_column(report, symmetry, experiment.name, wavelength)
         else:
-            report['data'][10].append('N/A')
+            add_summary_column(report, scaling, experiment.name, wavelength)
 
-        report['data'][11].append(f'{result.get("quality.summary.i_sigma", -99):0.1f}')
-        report['data'][12].append(f'{result.get("quality.summary.r_meas", -99):0.1f}')
-        report['data'][13].append(f'{result.get("quality.summary.cc_half", -99):0.1f} %')
-        if i_sigma_a is not None:
-            report['data'][14].append(f'{i_sigma_a:0.1f}')
-        else:
-            report['data'][14].append('N/A')
+    # Add additional combined column
+    if analysis.options.merge and scaling is not None:
+        add_summary_column(report, scaling, 'COMBINED', wavelength)
 
-    report['notes'] += f"""    6. Resolution selection: {res_method}"""
     report['notes'] = inspect.cleandoc(report['notes'])
 
     return report
 
 
-def lattice_table(analysis: Analysis, experiment: Experiment):
-    indexing = analysis.get_step_result(experiment, StepType.INDEX)
+def lattice_table(result: Result):
+    lattices = result.get('lattices', [])
+
     return {
         'title': "Lattice Character",
         'kind': 'table',
         'data': [
-                    ['No.', 'Lattice type', 'Cell Parameters', 'Quality']
+                    ['No.', 'Character', 'Error', 'a', 'b', 'c', 'alpha', 'beta', 'gamma', 'Point Groups', ]
                 ] + [
                     [
-                        lattice['index'], lattice['character'],
-                        '{:0.1f} {:0.1f} {:0.1f} {:0.1f} {:0.1f} {:0.1f}'.format(*lattice['unit_cell']),
-                        '{:0.1f}'.format(lattice['quality']),
-                    ] for lattice in indexing.get('lattices')
+                        lattice['index'],
+                        lattice['character'],
+                        f'{lattice["quality"]:0.1f}',
+                        *(f'{val:0.1f}' for val in lattice['unit_cell']),
+                        ', '.join(lattice_point_groups(lattice['character']))
+                    ] for lattice in lattices
                 ],
         'header': 'row',
         'notes': (
             "The Lattice Character is defined by the metrical parameters of its reduced cell as described "
             "in the International Tables for Crystallography Volume A, p. 746 (Kluwer Academic Publishers, "
             "Dordrecht/Boston/London, 1989). Note that more than one lattice character may have the "
-            "same Bravais Lattice."
+            "same Bravais Lattice.  The error column indicates the quality of fit."
         ),
     }
 
 
-def spacegroup_table(dataset, options):
-    results = dataset['results']
+def spacegroup_table(symmetry: Result):
     return {
         'title': "Likely Space-Groups and their Probabilities",
         'kind': 'table',
@@ -127,10 +143,9 @@ def spacegroup_table(dataset, options):
                     ['Selected', 'Candidates', 'Space Group Number', 'Probability']
                 ] + [
                     [
-                        '*' if sol['number'] == results['correction']['symmetry']['space_group'][
-                            'sg_number'] else '',
-                        xtal.SG_NAMES[sol['number']], sol['number'], sol['probability']
-                    ] for sol in results['symmetry']['candidates']
+                        '*' if candidate['number'] == symmetry.get('lattice').spacegroup else '',
+                        candidate['name'], candidate['number'], candidate['probability']
+                    ] for candidate in symmetry.get('candidates', [])
                 ],
         'header': 'row',
         'notes': (
@@ -144,8 +159,8 @@ def spacegroup_table(dataset, options):
     }
 
 
-def standard_error_report(dataset, options):
-    results = dataset['results']
+def standard_error_report(result):
+    errors = result.get('quality.errors')[:-1]
     return {
         'title': 'Standard Errors of Reflection Intensities by Resolution',
         'content': [
@@ -154,14 +169,13 @@ def standard_error_report(dataset, options):
                 'style': 'half-height',
                 'data': {
                     'x': ['Resolution Shell'] + [
-                        round(numpy.mean(row['resol_range']), 2) for row in
-                        results['correction']['standard_errors'][:-1]
+                        round(min(row['resol_range']), 2) for row in errors
                     ],
                     'y1': [
-                        ['Chi²'] + [row['chi_sq'] for row in results['correction']['standard_errors'][:-1]]
+                        ['Chi²'] + [row['chi_sq'] for row in errors]
                     ],
                     'y2': [
-                        ['I/Sigma'] + [row['i_sigma'] for row in results['correction']['standard_errors'][:-1]]
+                        ['I/Sigma'] + [row['i_sigma'] for row in errors]
                     ],
                     'x-scale': 'inv-square'
                 },
@@ -173,12 +187,11 @@ def standard_error_report(dataset, options):
                 'data':
                     {
                         'x': ['Resolution Shell'] + [
-                            round(numpy.mean(row['resol_range']), 2) for row in
-                            results['correction']['standard_errors'][:-1]
+                            round(min(row['resol_range']), 2) for row in errors
                         ],
                         'y1': [
-                            ['R-observed'] + [row['r_obs'] for row in results['correction']['standard_errors'][:-1]],
-                            ['R-expected'] + [row['r_exp'] for row in results['correction']['standard_errors'][:-1]],
+                            ['R-observed'] + [row['r_obs'] for row in errors],
+                            ['R-expected'] + [row['r_exp'] for row in errors],
                         ],
                         'y1-label': 'R-factors (%)',
                         'x-scale': 'inv-square'
@@ -195,22 +208,21 @@ def standard_error_report(dataset, options):
     }
 
 
-def shell_statistics_report(dataset, options, ):
-    results = dataset['results']
-    analysis = results['correction'] if not 'scaling' in results else results['scaling']
+def shell_statistics_report(result: Result):
+    stats = result.get('quality.statistics')
     return {
         'title': 'Statistics of Final Reflections by Shell',
         'content': [
             {
                 'kind': 'lineplot',
                 'data': {
-                    'x': ['Resolution Shell'] + [float(row['shell']) for row in analysis['statistics'][:-1]],
+                    'x': ['Resolution Shell'] + [round(row['shell'], 2) for row in stats],
                     'y1': [
-                        ['Completeness (%)'] + [row['completeness'] for row in analysis['statistics'][:-1]],
-                        ['CC½'] + [row['cc_half'] for row in analysis['statistics'][:-1]],
+                        ['Completeness (%)'] + [row['completeness'] for row in stats],
+                        ['CC½'] + [row['cc_half'] for row in stats],
                     ],
                     'y2': [
-                        ['R-meas'] + [row['r_meas'] for row in analysis['statistics'][:-1]],
+                        ['R-meas'] + [row['r_meas'] for row in stats],
                     ],
                     'y2-label': 'R-factors (%)',
                     'x-scale': 'inv-square'
@@ -219,12 +231,12 @@ def shell_statistics_report(dataset, options, ):
             {
                 'kind': 'lineplot',
                 'data': {
-                    'x': ['Resolution Shell'] + [float(row['shell']) for row in analysis['statistics'][:-1]],
+                    'x': ['Resolution Shell'] + [round(row['shell'], 2) for row in stats],
                     'y1': [
-                        ['I/Sigma(I)'] + [row['i_sigma'] for row in analysis['statistics'][:-1]],
+                        ['I/Sigma(I)'] + [row['i_sigma'] for row in stats],
                     ],
                     'y2': [
-                        ['SigAno'] + [row['sig_ano'] for row in analysis['statistics'][:-1]],
+                        ['SigAno'] + [row['sig_ano'] for row in stats],
                     ],
                     'x-scale': 'inv-square'
                 }
@@ -233,17 +245,21 @@ def shell_statistics_report(dataset, options, ):
             {
                 'kind': 'table',
                 'data': [
-                            ['Shell', 'Completeness', 'R_meas', 'CC½', 'I/Sigma(I)¹', 'SigAno²', 'CCₐₙₒ³']
+                            ['Shell', 'Observed', 'Unique', 'Completeness', 'R_obs', 'R_meas', 'CC½', 'I/Sigma(I)¹',
+                             'SigAno²', 'CCₐₙₒ³']
                         ] + [
                             [
-                                row['shell'],
-                                '{:0.2f}'.format(row['completeness']),
-                                '{:0.2f}'.format(row['r_meas']),
-                                '{:0.2f}'.format(row['cc_half']),
-                                '{:0.2f}'.format(row['i_sigma']),
-                                '{:0.2f}'.format(row['sig_ano']),
-                                '{:0.2f}'.format(row['cor_ano']),
-                            ] for row in analysis['statistics']
+                                f'{row["shell"]:0.2f}',
+                                f'{row["observed"]:d}',
+                                f'{row["unique"]:d}',
+                                f'{row["completeness"]:0.2f}',
+                                f'{row["r_obs"]:0.2f}',
+                                f'{row["r_meas"]:0.2f}',
+                                f'{row["cc_half"]:0.2f}',
+                                f'{row["i_sigma"]:0.2f}',
+                                f'{row["sig_ano"]:0.2f}',
+                                f'{row["cor_ano"]:0.2f}',
+                            ] for row in stats
                         ],
                 'header': 'row',
                 'notes': inspect.cleandoc("""
@@ -260,8 +276,9 @@ def shell_statistics_report(dataset, options, ):
     }
 
 
-def frame_statistics_report(dataset, options):
-    results = dataset['results']
+def frame_statistics_report(result: Result):
+    frames = result.get('quality.frames')
+    diffs = result.get('quality.differences')
     return {
         'title': 'Statistics of Intensities by Frame Number',
         'content': [
@@ -269,13 +286,12 @@ def frame_statistics_report(dataset, options):
                 'kind': 'scatterplot',
                 'style': 'half-height',
                 'data': {
-                    'x': ['Frame Number'] + [row['frame'] for row in results['integration']['scale_factors']],
+                    'x': ['Frame Number'] + [row['frame'] for row in frames],
                     'y1': [
-                        ['Scale Factor'] + [row['scale'] for row in results['integration']['scale_factors']],
+                        ['Intensity'] + [row['iobs'] for row in frames],
                     ],
                     'y2': [
-                        ['Mosaicity'] + [row['mosaicity'] for row in results['integration']['scale_factors']],
-                        # ['Divergence'] + [row['divergence'] for row in results['integration']['scale_factors']],
+                        ['Correlation'] + [row['corr'] for row in frames],
                     ],
                 }
             },
@@ -283,12 +299,12 @@ def frame_statistics_report(dataset, options):
                 'kind': 'scatterplot',
                 'style': 'half-height',
                 'data': {
-                    'x': ['Frame Number'] + [row['frame'] for row in results['correction']['frame_statistics']],
+                    'x': ['Frame Number'] + [row['frame'] for row in frames],
                     'y1': [
-                        ['R-meas'] + [row['r_meas'] for row in results['correction']['frame_statistics']]
+                        ['R-meas'] + [row['r_meas'] for row in frames]
                     ],
                     'y2': [
-                        ['I/Sigma(I)'] + [row['i_sigma'] for row in results['correction']['frame_statistics']],
+                        ['I/Sigma(I)'] + [row['i_sigma'] for row in frames],
                     ]
                 }
             },
@@ -296,25 +312,23 @@ def frame_statistics_report(dataset, options):
                 'kind': 'scatterplot',
                 'style': 'half-height',
                 'data': {
-                    'x': ['Frame Number'] + [row['frame'] for row in results['integration']['scale_factors']],
+                    'x': ['Frame Number'] + [row['frame'] for row in frames],
                     'y1': [
-                        ['Reflections'] + [row['ewald'] for row in results['integration']['scale_factors']]
+                        ['Reflections'] + [row['refs'] for row in frames]
                     ],
                     'y2': [
-                        ['Unique'] + [row['unique'] for row in results['correction']['frame_statistics']]
+                        ['Unique'] + [row['unique'] for row in frames]
                     ],
                 }
             },
             {
                 'kind': 'lineplot',
                 'data': {
-                    'x': ['Frame Number Difference'] + [row['frame_diff'] for row in
-                                                        results['correction']['diff_statistics']],
+                    'x': ['Frame Number Difference'] + [row['frame_diff'] for row in diffs],
                     'y1': [
-                        ['All'] + [row['rd'] for row in results['correction']['diff_statistics']],
-                        ['Friedel'] + [row['rd_friedel'] for row in results['correction']['diff_statistics']],
-                        ['Non-Friedel'] + [row['rd_non_friedel'] for row in
-                                           results['correction']['diff_statistics']],
+                        ['All'] + [row['rd'] for row in diffs],
+                        ['Friedel'] + [row['rd_friedel'] for row in diffs],
+                        ['Non-Friedel'] + [row['rd_non_friedel'] for row in diffs],
                     ],
                     'y1-label': 'Rd'
                 },
@@ -329,64 +343,45 @@ def frame_statistics_report(dataset, options):
     }
 
 
-def wilson_report(dataset, options):
-    results = dataset['results']
-    analysis = results['correction']
-    if results.get('data_quality') and results['data_quality'].get('intensity_plots'):
-        plot = {
-            'kind': 'lineplot',
-            'data': {
-                'x': ['Resolution'] + [
-                    (row['inv_res_sq']) ** -0.5 for row in results['data_quality']['intensity_plots']
-                ],
-                'y1': [
-                    ['<I> Expected'] + [row['expected_i'] for row in results['data_quality']['intensity_plots']],
-                ],
-                'y2': [
-                    ['<I> Observed'] + [row['mean_i'] for row in results['data_quality']['intensity_plots']],
-                    ['<I> Binned'] + [row['mean_i_binned'] for row in results['data_quality']['intensity_plots']],
-                ],
-
-                'y1-label': '<I>',
-                'x-scale': 'inv-square',
-            }
-        }
-    else:
-        plot = {
-            'kind': 'lineplot',
-            'data': {
-                'x': ['Resolution'] + [
-                    row['resolution'] for row in analysis['wilson_plot']
-                ],
-                'y1': [
-                    ['<I> Observed'] + [row['mean_i'] for row in analysis['wilson_plot']],
-                ],
-                'x-scale': 'inv-square',
-            },
-            'notes': "Wilson fit: A={:0.3f}, B={:0.3f}, Correlation={:0.2f}".format(*analysis['wilson_line'])
-
-        }
+def wilson_report(result: Result):
+    wilson = result.get('quality.twinning.plots')
     return {
         'title': 'Wilson Statistics',
-        'content': [
-            plot
-        ],
+        'content':  [{
+            'kind': 'lineplot',
+            'title': 'Wilson Plot',
+            'data': {
+                'x': ['Resolution'] + [round((1 / row['inv_res_sq']) ** 0.5, 2) for row in wilson if row['mean_i'] > 0],
+                'y1': [
+                    ['Observed'] + [row['mean_i'] for row in wilson if row['mean_i'] > 0],
+                    ['Expected'] + [row['expected_i'] for row in wilson if row['expected_i'] > 0],
+                    ['Binned'] + [row['mean_i_binned'] for row in wilson if row['mean_i_binned'] > 0],
+                ],
+                'x-scale': 'inv-square',
+                'y1-label': '⟨I⟩',
+            },
+            'notes': inspect.cleandoc("""
+                *  This plot shows the falloff in intensity as a function in resolution; The expected
+                   curve is based on analysis of structures in the PDB. Major deviations from the expected
+                   plot may indicate pathological data or processing problems.
+                *  The analysis was performed with XTRIAGE:  CCP4 newsletter No. 43, Winter 2005 from the PHENIX 
+                   package:  Acta Cryst. D75, 861-877 (2019).
+            """)
+        }]
     }
 
 
-def twinning_report(dataset, options):
-    results = dataset['results']
-    quality = results['data_quality']
-    if quality.get('twinning_l_zscore'):
+def twinning_report(result: Result):
+    if result.get('quality.twinning.l_zscore'):
         l_test = {
-            'title': 'L Test for twinning',
+            'title': 'L-Test for twinning',
             'kind': 'lineplot',
             'data': {
-                'x': ['|L|'] + [row['abs_l'] for row in quality['twinning_l_test']],
+                'x': ['|L|'] + [row['abs_l'] for row in result.get('quality.twinning.l_test')],
                 'y1': [
-                    ['Observed'] + [row['observed'] for row in quality['twinning_l_test']],
-                    ['Twinned'] + [row['twinned'] for row in quality['twinning_l_test']],
-                    ['Untwinned'] + [row['untwinned'] for row in quality['twinning_l_test']],
+                    ['Observed'] + [row['observed'] for row in result.get('quality.twinning.l_test')],
+                    ['Twinned'] + [row['twinned'] for row in result.get('quality.twinning.l_test')],
+                    ['Untwinned'] + [row['untwinned'] for row in result.get('quality.twinning.l_test')],
                 ],
                 'y1-label': 'P(L>=1)',
             },
@@ -395,9 +390,10 @@ def twinning_report(dataset, options):
                 *  Multivariate Z-Score: {0:0.3f}.  The multivariate Z score is a quality measure of the 
                    given spread in intensities. Good to reasonable data are expected to have a Z score 
                    lower than 3.5.  Large values can indicate twinning, but small values 
-                   do not necessarily exclude it""".format(quality['twinning_l_zscore'],
-                                                           *quality['twinning_l_statistic'])
-                                      )
+                   do not necessarily exclude it.
+                *  The analysis was performed with XTRIAGE:  CCP4 newsletter No. 43, Winter 2005 from the PHENIX 
+                   package:  Acta Cryst. D75, 861-877 (2019).
+            """.format(result.get('quality.twinning.l_zscore'), *result.get('quality.twinning.l_statistic')))
         }
     else:
         return {
@@ -405,8 +401,7 @@ def twinning_report(dataset, options):
             'description': 'Twinning analysis could not be performed.'
         }
 
-    if results['data_quality'].get('twin_laws'):
-        laws = results['data_quality']['twin_laws']
+    if result.get('quality.twinning.laws'):
         twin_laws = {
             'title': 'Twin Laws',
             'kind': 'table',
@@ -416,13 +411,15 @@ def twinning_report(dataset, options):
                     ] + [
                         [law['operator'], law['type'], law['r_obs'], law['britton_alpha'], law['H_alpha'],
                          law['ML_alpha']]
-                        for law in laws
+                        for law in result.get('quality.twinning.laws')
                     ],
-            'notes': (
-                "Please note that the possibility of twin laws only means that the lattice symmetry "
-                "permits twinning; it does not mean that the data are actually twinned.  "
-                "You should only treat the data as twinned if the intensity statistics are abnormal."
-            )
+            'notes': inspect.cleandoc("""
+                *  Please note that the possibility of twin laws only means that the lattice symmetry
+                   permits twinning; it does not mean that the data are actually twinned.
+                   You should only treat the data as twinned if the intensity statistics are abnormal.
+                *  The analysis was performed with XTRIAGE:  CCP4 newsletter No. 43, Winter 2005 from the PHENIX 
+                   package:  Acta Cryst. D75, 861-877 (2019).
+            """)
         }
     else:
         twin_laws = {

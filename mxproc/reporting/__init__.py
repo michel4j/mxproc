@@ -1,222 +1,118 @@
-import os
-import subprocess
+import json
+import shutil
+from pathlib import Path
+from typing import List
 
-from prettytable import PrettyTable
-from mxproc.engines.xds.reporting import summary_table, lattice_table, spacegroup_table, standard_error_report, \
-    shell_statistics_report, frame_statistics_report, wilson_report, twinning_report
-from mxproc.engines.xds.reporting.generic import summary_table, lattice_table, spacegroup_table, standard_error_report, \
-    shell_statistics_report, frame_statistics_report, wilson_report, twinning_report
-from mxproc.engines.xds.reporting.screening import screening_summary, screening_strategy, screening_analysis_report
+from mxproc import Analysis
+from mxproc.xtal import Experiment
+from mxproc.common import StepType, load_json
 
-SHARE_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'share')
+from .generic import summary_table, lattice_table, spacegroup_table, standard_error_report
+from .generic import shell_statistics_report, frame_statistics_report, wilson_report, twinning_report
+from .screening import screening_summary, screening_strategy, screening_completeness
 
 
-def plot(data, plot_type='linespoints', style='full-height'):
-    raw_data = [data['x']]
-    raw_data.extend(data['y1'])
-    y2_start = len(raw_data)
-    raw_data.extend(data.get('y2', []))
-    data_array = list(zip(*raw_data))
-    labels = data_array[0]
+DATA_DIR = Path(__file__).parent / 'data'
 
-    height = 43 if style == 'full-height' else 24
-    if data.get('x-scale') == 'inv-square':
-        xspec = '($1**-2)'
-        extras = [
-            'set xtics nomirror',
-            'set link x via 1/x**2 inverse 1/x**0.5',
-            'set x2tics'
+
+def save_report(report: dict, path: Path):
+    """
+    Save the given report to the
+    :param report: dictionary containing the report
+    :param path: location to store the report
+    """
+
+    report_file = path / 'report.json'
+    text_file = path / 'report.txt'
+    report.update(id=None, data_id=None, directory=str(path), filename='report.json')
+
+    # read previous json_file and obtain id from it if one exists:
+    if report_file.exists():
+        old_report = load_json(report_file)
+        report['id'] = old_report.get('id')
+        report['data_id'] = old_report.get('data_id')
+
+    # save
+    with open(report_file, 'w') as file:
+        json.dump(report, file, indent=4)
+
+    # with open(text_file, 'w') as handle:
+    #     handle.write(text_report(report['details']))
+
+    shutil.copy(DATA_DIR / 'report.html', path)
+    shutil.copy(DATA_DIR / 'report.min.js', path)
+    shutil.copy(DATA_DIR / 'report.min.css', path)
+
+
+def screening_report(analysis) -> List[dict]:
+    """
+    Prepare a screening report
+    :param analysis: analysis object
+    :return: list of dictionaries
+    """
+    experiment = None
+    for expt in analysis.experiments:
+        if analysis.get_step_result(expt, StepType.STRATEGY):
+            experiment = expt
+            break
+
+    if experiment is None:
+        return []
+    else:
+        indexing = analysis.get_step_result(experiment, StepType.INDEX)
+        strategy = analysis.get_step_result(experiment, StepType.STRATEGY)
+        return [
+            {
+                'title': f'Screening Report for Dataset "{experiment.name}"',
+                'content': [
+                    screening_summary(analysis, experiment),
+                    screening_strategy(strategy),
+                    lattice_table(indexing),
+                    screening_completeness(strategy),
+                ]
+            }
         ]
-        extras = []
-    else:
-        xspec = '1'
-        extras = []
-
-    plots = [
-                "'-' using {}:{} title '{}' with {} axes x1y1 ".format(xspec, i + 2, labels[i], plot_type)
-                for i in range(y2_start)
-            ] + [
-                "'-' using {}:{} title '{}' with {} axes x1y2 ".format(xspec, i + 2, labels[i], plot_type)
-                for i in range(y2_start, len(raw_data))
-            ]
-    plot_data = '\n'.join([
-        '\t '.join(['{}'.format(val) for val in row])
-        for row in data_array[1:]
-    ])
-    commands = "\n".join(extras + [
-        "set term dumb 110 {}".format(height),
-        "plot " + ',\n\t'.join(plots),
-        plot_data,
-        "exit"
-    ])
-
-    process = subprocess.Popen(['gnuplot'], stdin=subprocess.PIPE, stdout=subprocess.PIPE)
-    output, errors = process.communicate(commands.encode('utf8'))
-    return output  # .decode('utf-8')
 
 
-def single_details(dataset, options):
-    if options.get('anomalous'):
-        title = 'Anomalous Data Quality Summary'
-    else:
-        title = 'Data Quality Summary'
+def single_details(analysis: Analysis, experiment: Experiment) -> List[dict]:
+    anom = "Anomalous" if analysis.options.anomalous else "Native"
+
+    indexing = analysis.get_step_result(experiment, StepType.INDEX)
+    integration = analysis.get_step_result(experiment, StepType.INTEGRATE)
+    symmetry = analysis.get_step_result(experiment, StepType.SYMMETRY)
+    scaling = analysis.get_step_result(experiment, StepType.SCALE)
+
     return [
         {
-            'title': title,
+            'title': f"{anom} Data Analysis Report for '{experiment.name}'",
             'content': [
-                summary_table([dataset]),
-                lattice_table(dataset, options),
-                spacegroup_table(dataset, options)
+                summary_table(analysis),
+                lattice_table(integration),
+                spacegroup_table(symmetry)
             ],
         },
-        standard_error_report(dataset, options),
-        frame_statistics_report(dataset, options),
-        shell_statistics_report(dataset, options),
-        wilson_report(dataset, options),
-        twinning_report(dataset, options),
+        standard_error_report(integration),
+        frame_statistics_report(symmetry),
+        shell_statistics_report(scaling),
+        wilson_report(scaling),
+        twinning_report(scaling),
     ]
 
 
-def merging_details(datasets, options):
-    if options.get('anomalous'):
-        title = 'Anomalous Data Quality Summary'
-    else:
-        title = 'Data Quality Summary'
-    report = [
-        {
-            'title': title,
-            'content': [
-                summary_table(datasets),
-            ],
-        }
-    ]
-    combined = None
-    for dataset in datasets:
-        if dataset['parameters']['name'] == 'combined':
-            combined = dataset
-            continue
-        report.extend([
-            {
-                'title': 'Analysis Report: Dataset "{}"'.format(dataset['parameters']['name']),
-                'content': [
-                    lattice_table(dataset, options),
-                    spacegroup_table(dataset, options),
-                ]
-            },
-            standard_error_report(dataset, options),
-            frame_statistics_report(dataset, options),
-            shell_statistics_report(dataset, options),
-        ])
-    if combined:
-        report.extend([
-            {
-                'title': 'Analysis Report: "Combined"',
-                'content': [
-                    lattice_table(combined, options),
-                    spacegroup_table(combined, options),
-                ]
-            },
-            shell_statistics_report(combined, options),
-            wilson_report(combined, options),
-            twinning_report(combined, options),
-        ])
-    return report
+def merging_details(analysis: Analysis):
+
+    report_list = []
+    for experiment in analysis.experiments:
+        report_list.extend(single_details(analysis, experiment))
+
+    return report_list
 
 
-def multi_details(datasets, options):
-    report = [
-        {
-            'title': 'MAD Data Quality Summary',
-            'content': [
-                summary_table(datasets),
-            ],
-        }
-    ]
-    for dataset in datasets:
-        report.extend([
-            {
-                'title': 'Analysis Report: Dataset "{}"'.format(dataset['parameters']['name']),
-                'content': [
-                    lattice_table(dataset, options),
-                    spacegroup_table(dataset, options),
-                ]
-            },
-            standard_error_report(dataset, options),
-            frame_statistics_report(dataset, options),
-            shell_statistics_report(dataset, options),
-            wilson_report(dataset, options),
-            twinning_report(dataset, options),
-        ])
-    return report
+def multi_details(analysis: Analysis):
+    report_list = []
+    for experiment in analysis.experiments:
+        report_list.extend(single_details(analysis, experiment))
+
+    return report_list
 
 
-def heading(text, level):
-    if level in [1, 2]:
-        underline = {1: '=', 2: '-'}[level]
-        return '\n{}\n{}'.format(text.title(), underline * len(text))
-    else:
-        return '\n{} {}'.format('#' * level, text)
-
-
-def text_report(report):
-    output = []
-    for i, section in enumerate(report):
-        if i != 0:
-            output.append('\n\n{}\n\n'.format('-' * 79))
-        output.append(heading(section['title'], 1))
-        if 'description' in section:
-            output.append(section['description'])
-        if 'content' in section:
-            for content in section['content']:
-                if 'title' in content:
-                    output.append(heading(content['title'], 2))
-                output.append(content.get('description', ''))
-                if content.get('kind') == 'table':
-                    table = PrettyTable()
-                    if content.get('header') == 'row':
-                        table.field_names = content['data'][0]
-                        for row in content['data'][1:]:
-                            table.add_row(row)
-                        table.align = 'r'
-                    else:
-                        table.header = False
-                        table.field_names = ['{}'.format(j) for j in range(len(content['data'][0]))]
-                        for j, row in enumerate(content['data']):
-                            table.add_row(row)
-                            table.align['{}'.format(j)] = 'l' if j == 0 else 'r'
-
-                    output.append(table.get_string())
-                elif content.get('kind') in ['lineplot', 'scatterplot']:
-                    plot_type = {'lineplot': 'linespoints', 'scatterplot': 'points'}[content['kind']]
-                    plot_text = gnuplot.plot(content['data'], plot_type=plot_type,
-                                             style=content.get('style', 'full-height'))
-                    output.append(plot_text.decode('utf8'))
-                if 'notes' in content:
-                    output.append(heading('NOTES', 4))
-                    output.append(content['notes'] + '\n')
-        if 'notes' in section:
-            output.append(heading('NOTES', 3))
-            output.append(section['notes'] + '\n')
-
-    return '\n'.join(output)
-
-
-def screening_details(analysis, experiment):
-    report = [
-        {
-            'title': 'Data Quality Summary',
-            'content': [
-                screening_summary(analysis),
-                screening_strategy(analysis, experiment),
-                lattice_table(analysis, experiment),
-                spacegroup_table(analysis, experiment),
-            ]
-        }
-    ]
-
-    report.extend([
-        predicted_quality_report(analysis, experiment),
-        screening_analysis_report(analysis, experiment)
-    ])
-
-    return report

@@ -37,7 +37,6 @@ SPACEGROUP_NAMES = {
     222: 'Pn-3n', 223: 'Pm-3n'
 }
 
-DOSE_LIMIT = 30.0   # MGy, from PNAS  (2006) 103 (13) 4912-4917
 MATTHEWS_COEFFICIENT = 2.69     # From Protein Sci. 2003 Sep; 12(9): 1865–1871.
 SPACEGROUPS = {
     'aP': (1, 2),
@@ -124,6 +123,15 @@ class Lattice:
         and a Matthews coefficient of 2.69 A^3/Dalton, 110 Daton per Amino acid
         """
         return int(self.volume()/(MATTHEWS_COEFFICIENT * 110))
+
+
+@dataclass
+class Beam:
+    flux: float
+    fwhm_x: float
+    fwhm_y: float
+    wavelength: float
+    aperture: float
 
 
 @dataclass
@@ -250,7 +258,7 @@ def load_multiple(file_names: Sequence[Union[str, Path]]) -> Sequence[Experiment
     return list(experiments.values())
 
 
-def lattice_point_groups(characters: Sequence[str]) -> Sequence[str]:
+def lattice_point_groups(*characters: str) -> Sequence[str]:
     """
     Takes a list of lattice characters and returns a unique list of the
     names of the lowest symmetry pointgroup.

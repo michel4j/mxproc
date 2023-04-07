@@ -1,6 +1,7 @@
 root:
   fields:
     - "!!! ERROR<str:error_code> !!! <str:error>"
+
   sections:
     frames:
       domains: " IMAGE IER  SCALE     NBKG NOVL NEWALD NSTRONG  NREJ   SIGMAB   SIGMAR(.+?) REFINED PARAMETERS:"
@@ -16,3 +17,11 @@ root:
         - " DETECTOR COORDINATES (PIXELS) OF DIRECT BEAM  <float:beam_center> <float:beam_center>"
         - " DETECTOR ORIGIN (PIXELS) AT                   <float:detector_origin> <float:detector_origin>"
         - " CRYSTAL TO DETECTOR DISTANCE (mm)    <float:distance>"
+
+    parameters:
+      domain: "SUGGESTED VALUES FOR INPUT PARAMETERS(.+?) NUMBER OF STRONG REFLECTIONS USED FOR LEARNING"
+      fields:
+        - "BEAM_DIVERGENCE=   <float:divergence>"
+        - "BEAM_DIVERGENCE_E.S.D.=   <float:divergence_esd>"
+        - "REFLECTING_RANGE=  <float:range>"
+        - "REFLECTING_RANGE_E.S.D.=  <float:range_esd>"

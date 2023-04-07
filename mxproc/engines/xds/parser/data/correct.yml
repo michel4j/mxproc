@@ -1,44 +1,36 @@
 root:
   fields:
     - "!!! ERROR<str:error_code> !!! <str:error>"
-    - "WILSON LINE (using all data) : A= <float:wilson_line> B= <float:wilson_line> CORRELATION= <float:wilson_line>"
-
 
   sections:
-    summary:
+    quality:
       domain: "REFINEMENT OF DIFFRACTION PARAMETERS USING ALL IMAGES(.+?)THE DATA COLLECTION STATISTICS REPORTED BELOW ASSUMES"
       fields:
         - " STANDARD DEVIATION OF SPOT    POSITION (PIXELS)  <float:pixel_error>"
         - " STANDARD DEVIATION OF SPINDLE POSITION (DEGREES) <float:angle_error>"
         - " CRYSTAL MOSAICITY (DEGREES) <float:mosaicity>"
 
-    reflections:
-      domain: "STATISTICS OF SAVED DATA SET(.+?)WILSON STATISTICS OF DATA SET"
-      fields:
-        - "NUMBER OF REFLECTIONS IN SELECTED SUBSET OF IMAGES <int:total>"
-        - "NUMBER OF SYSTEMATIC ABSENT REFLECTIONS <int:absent>"
-        - "NUMBER OF REJECTED MISFITS <int:misfits>"
-        - "NUMBER OF ACCEPTED OBSERVATIONS <int:accepted>"
-        - "NUMBER OF UNIQUE ACCEPTED REFLECTIONS <int:unique>"
-
     statistics:
       domain: "STATISTICS OF SAVED DATA SET .*? WITH SIGNAL/NOISE >= -3.0(.+?)NUMBER OF REFLECTIONS IN SELECTED"
       table: " <float:shell> <int:observed> <int:unique> <int:possible> <float:completeness>% <float:r_obs>% <float:r_exp>% <int:compared> <float:i_sigma> <float:r_meas>% <float:cc_half><char:signif> <int:cor_ano><char:asignif> <float:sig_ano> <int:Nano>"
 
-    statistics_overall:
-      domain: "STATISTICS OF SAVED DATA SET .*? WITH SIGNAL/NOISE >= -3.0(.+?)NUMBER OF REFLECTIONS IN SELECTED"
+    summary:
+      domain: "STATISTICS OF SAVED DATA SET .*? WITH SIGNAL/NOISE >= -3.0(.+?)WILSON STATISTICS OF DATA SET"
       fields:
         - "    total <int:observed> <int:unique> <int:possible> <float:completeness>% <float:r_obs>% <float:r_exp>% <int:compared> <float:i_sigma> <float:r_meas>% <float:cc_half><char:signif> <int:cor_ano><char:asignif> <float:sig_ano> <int:Nano>"
+        - " NUMBER OF REFLECTIONS IN SELECTED SUBSET OF IMAGES <int:reflections>"
+        - " NUMBER OF SYSTEMATIC ABSENT REFLECTIONS <int:absent>"
+        - " NUMBER OF REJECTED MISFITS <int:misfits>"
 
-    standard_errors:
+    errors:
       domain: "STANDARD ERROR OF REFLECTION INTENSITIES(.+?)SUMMARY OF DATA SET STATISTICS FOR VARIOUS SUBSETS OF INCLUDED DATA IMAGES"
       table: "<float:resol_range:9> <float:resol_range:7> <float:i_sigma:8> <float:chi_sq:6> <float:r_obs:9> <float:r_exp:9> <int:n_obs:7> <int:n_accept:7> <int:n_reject:7>"
 
-    wilson_plot:
+    wilson:
       domain: "WILSON STATISTICS OF DATA SET(.+?)HIGHER ORDER MOMENTS OF WILSON DISTRIBUTION"
       table: "<int:reflections:8> <float:resolution:9> <float:inv_res_sq:7> <float:mean_i:11> <float:log_mean_i:11> <float:BO:9>"
 
-    correction_factors:
+    correction:
       domain: "MEAN INTENSITY AS FUNCTION OF SPINDLE(.+?)STANDARD ERROR OF REFLECTION INTENSITIES AS FUNCTION OF RESOLUTION"
       sections:
         factors:
@@ -50,7 +42,6 @@ root:
           fields:
             - " <float:a> <float:b> <float:i_sigma_a>"
 
-
     lattices:
       domain: "DETERMINATION OF LATTICE CHARACTER AND BRAVAIS LATTICE(.+?)LATTICE SYMMETRY IMPLICATED BY SPACE GROUP SYMMETRY"
-      table: " * <int:id:3> <slug:character> <float:quality> <float:unit_cell> <float:unit_cell> <float:unit_cell> <float:unit_cell> <float:unit_cell> <float:unit_cell> <int:reindex_matrix> <int:reindex_matrix> <int:reindex_matrix> <int:reindex_matrix> <int:reindex_matrix> <int:reindex_matrix> <int:reindex_matrix> <int:reindex_matrix> <int:reindex_matrix> <int:reindex_matrix> <int:reindex_matrix> <int:reindex_matrix>"
+      table: " [^ ] <int:index> <slug:character> <float:quality> <float:unit_cell> <float:unit_cell> <float:unit_cell> <float:unit_cell> <float:unit_cell> <float:unit_cell> <int:reindex_matrix> <int:reindex_matrix> <int:reindex_matrix> <int:reindex_matrix> <int:reindex_matrix> <int:reindex_matrix> <int:reindex_matrix> <int:reindex_matrix> <int:reindex_matrix> <int:reindex_matrix> <int:reindex_matrix> <int:reindex_matrix>"

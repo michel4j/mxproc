@@ -17,7 +17,12 @@ dependencies = [
     "numpy",
     "pyyaml",
     "tqdm",
-    "pandas"
+    "pandas",
+    "gnuplot",
+    "prettytable",
+    "vg",
+    "scipy"
+
 ]
 
 [project.urls]
