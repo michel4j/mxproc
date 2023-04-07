@@ -5,7 +5,6 @@ from typing import Sequence, Tuple, Union
 import itertools
 import numpy
 from mxio import DataSet, XYPair, Geometry
-from numpy._typing import ArrayLike
 from numpy.typing import ArrayLike
 
 SPACEGROUP_NAMES = {
@@ -38,6 +37,8 @@ SPACEGROUP_NAMES = {
     222: 'Pn-3n', 223: 'Pm-3n'
 }
 
+DOSE_LIMIT = 30.0   # MGy, from PNAS  (2006) 103 (13) 4912-4917
+MATTHEWS_COEFFICIENT = 2.69     # From Protein Sci. 2003 Sep; 12(9): 1865–1871.
 SPACEGROUPS = {
     'aP': (1, 2),
     'mP': (3, 4, 6, 7, 10, 11, 13, 14),
@@ -102,6 +103,9 @@ class Lattice:
         self.character = spacegroup_character(self.spacegroup)
         self.name = SPACEGROUP_NAMES.get(self.spacegroup, "P1")
 
+    def cell_text(self):
+        return f"{self.a:0.3f} {self.b:0.3f} {self.c:0.3f} {self.alpha:0.2f} {self.beta:0.2f} {self.gamma:0.2f}"
+
     def volume(self) -> float:
         """
         Calculate unit cell volume in  cubic angstroms
@@ -113,6 +117,13 @@ class Lattice:
         return self.a * self.b * self.c * (
                 1 - cos_alpha**2 - cos_beta**2 - cos_gamma**2 + 2*cos_alpha*cos_beta*cos_gamma
         )**0.5
+
+    def estimate_content(self) -> int:
+        """
+        Estimate the number of amino acids in the unit cell assuming 50% solvent content
+        and a Matthews coefficient of 2.69 A^3/Dalton, 110 Daton per Amino acid
+        """
+        return int(self.volume()/(MATTHEWS_COEFFICIENT * 110))
 
 
 @dataclass
@@ -186,6 +197,7 @@ def load_experiment(filename: Union[str, Path]) -> Sequence[Experiment]:
 
     diffs = numpy.abs(numpy.diff(angles, axis=0))
     diffs[:, 1] /= dset.frame.delta_angle
+    diffs = numpy.round(diffs)
 
     sweep_mask = numpy.argwhere(diffs[:, 0] != diffs[:, 1]).ravel() + 1
     sweeps = numpy.split(angles, sweep_mask)
@@ -272,15 +284,15 @@ def spacegroup_character(number: int) -> str:
     return "aP"
 
 
-def resolution_shells(resolution: float, count: int = 12) -> ArrayLike:
+def resolution_shells(resolution: float) -> ArrayLike:
     """
     Calculate resolution shells for the given d-spacing
     :param resolution: minimum d-spacing
-    :param count: Number of shells
     :return: array of resolution shells
     """
 
-    max_angle = 2 * numpy.arcsin(0.5 / resolution)
-    min_angle = 2 * numpy.arcsin(0.5 / 5.0)
-    angles = numpy.linspace(min_angle, max_angle, count)
-    return numpy.round(0.5 / numpy.sin(0.5 * angles), 2)
+    count = int(20 - 2**(resolution - 2))
+    if 6 - resolution > 1.0:
+        return numpy.round(numpy.sqrt(1/(numpy.linspace(1.0/6**2, 1.0/resolution**2, count))), 2)
+    else:
+        return []
