@@ -1,0 +1,29 @@
+$font-stack: 'Fira Sans', sans-serif;
+$font-size: 14px;
+$primary-color: #333;
+
+body {
+  font-family: $font-stack;
+  font-size: $font-size;
+  color: $primary-color;
+}
+
+svg {
+  font-family: $font-stack;
+}
+
+.axis {
+  font-size: $font-size;
+}
+
+.tick line {
+  opacity: 0.2;
+}
+
+td, th {
+  text-align: right;
+}
+
+th:first-child {
+  text-align: left;
+}
