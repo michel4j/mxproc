@@ -645,7 +645,10 @@ class XDSAnalysis(Analysis):
             results = {}
             for name, experiment in scalable_experiments.items():
                 work_dir = self.options.working_directories[experiment.identifier]
-                scale_file = (work_dir / 'XSCALE.HKL').relative_to(self.options.directory)
+                if self.options.merge:
+                    scale_file = 'XSCALE.HKL'
+                else:
+                    scale_file = (work_dir / 'XSCALE.HKL').relative_to(self.options.directory)
                 expt_details = details[str(scale_file)]
                 results[experiment.identifier] = Result(state=StateType.SUCCESS, details=expt_details)
                 exportable[expt_details['output']].append(name)
