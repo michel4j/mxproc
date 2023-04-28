@@ -1,9 +1,16 @@
+from __future__ import annotations
+
+import argparse
 import gzip
 import os
 import time
+import importlib
+import logging
+
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from datetime import datetime
+
 from importlib.metadata import version, PackageNotFoundError
 from pathlib import Path
 from typing import Sequence, Union, Dict
@@ -12,13 +19,14 @@ import yaml
 
 from mxproc import log
 from mxproc.command import CommandFailed
-from mxproc.common import StepType, InvalidAnalysisStep, StateType, Result, Workflow, logistic
-from mxproc.xtal import load_multiple, Experiment
+from mxproc.common import StepType, InvalidAnalysisStep, StateType, Result, Workflow, logistic, parse_ranges
+from mxproc.xtal import load_multiple, Experiment, Beam
 from mxproc.log import logger
 
 __all__ = [
     "Analysis",
     "AnalysisOptions",
+    "Application"
 ]
 
 try:
@@ -51,9 +59,11 @@ WORKFLOWS = {
 class AnalysisOptions:
     files: Sequence[str]
     directory: Path
+    beam: Beam
     working_directories: dict = field(default_factory=dict)
     screen: bool = False
     anomalous: bool = False
+    optimize: bool = False
     merge: bool = True
     multi: bool = False
     extras: dict = field(default_factory=dict)
@@ -69,24 +79,20 @@ class Analysis(ABC):
 
     prefix: str = 'proc'
 
-    def __init__(
-            self,
-            *files: str,
-            directory: Union[Path, str, None] = None,
-            screen: bool = False,
-            anomalous: bool = True,
-            merge: bool = True
-    ):
+    def __init__(self, args: argparse.Namespace):
         """
         Data analysis objects
-        :param files: image files corresponding to the datasets to process
-        :param directory: top-level working directory, subdirectories may be created within for some processing options
-        :param screen: Whether this is a screening analysis
-        :param anomalous: Whether to process as anomalous data
-        :param merge:  Whether to merge the datasets into a single output file or to keep them separate
+        :param args: arguments parsed from command line
         """
+        beam = {
+            'flux': args.beam_flux,
+            'aperture': args.beam_size,
+            'fwhm_x': args.beam_fwhm[0],
+            'fwhm_y': args.beam_fwhm[1],
+        }
 
         # Prepare working directory
+        directory = args.dir
         if directory in ["", None]:
             index = 1
             directory = Path(f"{self.prefix}-{index}")
@@ -95,11 +101,12 @@ class Analysis(ABC):
                 directory = Path(f"{self.prefix}-{index}")
         directory = Path(directory).absolute()
 
-        self.experiments = load_multiple(files)
-        merge &= len(self.experiments) > 1
+        self.experiments = load_multiple(args.images)
+        merge = (not args.multi) and (len(self.experiments) > 1)
         self.options = AnalysisOptions(
-            files=files, directory=directory, screen=screen, anomalous=anomalous, merge=merge,
-            multi=(len(self.experiments) > 1 and not merge)
+            files=args.images, directory=directory, screen=args.screen, anomalous=args.anom, merge=merge,
+            beam=Beam(**beam), multi=(len(self.experiments) > 1 and not merge),
+            extras=self.get_extras(args)
         )
 
         self.results = {}
@@ -119,12 +126,20 @@ class Analysis(ABC):
             StepType.REPORT: self.report
         }
 
+    def get_extras(self, args: argparse.Namespace) -> dict:
+        """
+        Extract Backend specific Parameters from arguments namespace object
+        :param args: Namespace parsed from command line
+        :return: dictionary
+        """
+        return {}
+
     def load(self, step: StepType):
         """
         Load an Analysis from a meta file and reset the state to it.
         :param step: analysis step corresponding to the saved metadata
         """
-        meta_file = f'{step.slug()}.meta'
+        meta_file = self.options.directory / f'{step.slug()}.meta'
 
         try:
             with gzip.open(meta_file, 'rb') as handle:  # gzip compressed yaml file
@@ -221,9 +236,8 @@ class Analysis(ABC):
         logger.banner(sub_header, overline=False, line='-')
 
         while step is not None:
-            # always go back to top-level working directory
-            if self.options.directory.exists():
-                os.chdir(self.options.directory)
+            # always go back to top-level working directory before running step
+            os.chdir(self.options.directory)
 
             step_method = self.methods.get(step)
             try:
@@ -330,3 +344,63 @@ class Analysis(ABC):
         harvested results from each dataset.
         """
         ...
+
+
+class Application:
+    def __init__(self, description: str, step: StepType = StepType.INITIALIZE):
+        self.parser = argparse.ArgumentParser(description=f'MX AutoProcess: {description}')
+        # main arguments
+        self.parser.add_argument('images', nargs='*', help='Datasets to process. One frame per dataset.')
+        self.parser.add_argument('-s', '--screen', help='Characterization and Strategy', action="store_true")
+        self.parser.add_argument('-a', '--anom', help="Friedel's law False", action="store_true")
+        self.parser.add_argument('-d', '--dir', type=str, help="Working Directory")
+        self.parser.add_argument('-m', '--multi', help='Separate datasets scaled together', action="store_true")
+        self.parser.add_argument('-u', '--use', type=str, default='XDS', help="Backend Engine. XDS | DIALS.")
+        self.parser.add_argument('-1', '--single', action='store_true', default=False, help="Stop after a single step")
+        self.parser.add_argument('-c', '--beam-center', type=float, nargs=2, help="Override Beam Center")
+
+        # arguments for fine-tuning
+        self.parser.add_argument('-f', '--frames', type=parse_ranges, help='Subset of Frames e.g: "45-400,410,420-450"')
+        self.parser.add_argument('-r', '--resolution', type=float, help='Resolution limit')
+        self.parser.add_argument('-o', '--optimize', help='Optimize re-processing', action="store_true")
+        self.parser.add_argument('-g', '--spacegroup', type=int, help='Forced spacegroup number')
+
+        # indexing arguments
+        self.parser.add_argument('--min-sigma', type=float, help='Minimum I/Sigma of spots for indexing')
+        self.parser.add_argument('--max-sigma', type=float, help="Maximum I/Sigma of spots for indexing")
+
+        # beam arguments
+        self.parser.add_argument('--beam-flux', type=float, help='Beam flux for dataset in ph/sec.', default=1e12)
+        self.parser.add_argument('--beam-size', type=float, help="Beam aperture size", default=100.)
+        self.parser.add_argument('--beam-fwhm', type=float, nargs=2, help="Beam FWHM", default=(100., 100.))
+        self.step = step
+
+    @staticmethod
+    def get_engine(args: argparse.Namespace) -> Analysis:
+        """
+        Determine backend engine Analysis class based on engine name
+        :param args:  Parsed arguments
+        :return:  Analysis instance
+        """
+        name = args.use.upper()
+        class_name = f'{name}Analysis'
+        module_name = f'mxproc.engines.{name.lower()}'
+        try:
+            module = importlib.import_module(module_name)
+            cls = getattr(module, class_name)
+            proc = cls(args)
+        except AttributeError:
+            proc = None
+            logger.error(f'Backend analysis engine {name} not found!')
+        return proc
+
+    def run(self):
+        """
+        Parse arguments and run analysis application
+        """
+        log.log_to_console(logging.DEBUG)
+        args = self.parser.parse_args()
+        proc = self.get_engine(args)
+        if proc is not None:
+            proc.run(step=self.step, single=args.single)
+

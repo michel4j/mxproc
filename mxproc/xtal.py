@@ -130,8 +130,8 @@ class Beam:
     flux: float
     fwhm_x: float
     fwhm_y: float
-    wavelength: float
     aperture: float
+    wavelength: float = 1.0
 
 
 @dataclass

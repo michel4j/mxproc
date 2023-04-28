@@ -5,5 +5,5 @@ from mxproc import Application
 
 
 if __name__ == "__main__":
-    app = Application(description='Initialize a dataset processing', step=StepType.INITIALIZE)
+    app = Application(description="Integrate Datasets", step=StepType.INTEGRATE)
     app.run()

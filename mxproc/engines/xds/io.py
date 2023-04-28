@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import os
 import shutil
 from pathlib import Path
@@ -7,6 +9,7 @@ from typing import Union, Literal, Tuple, Sequence
 import numpy
 
 from mxproc.xtal import Lattice, Experiment
+from mxio import XYPair
 from mxproc.log import logger
 
 XDSJob = Literal["XYCORR", "INIT", "COLSPOT", "IDXREF",  "XPLAN", "DEFPIX", "INTEGRATE", "CORRECT", "ALL"]
@@ -20,21 +23,30 @@ class XDSParameters:
     skip_range: Sequence[Tuple[int, int]] = ()
 
     format: str = ""
+    beam_center: XYPair | None = None
     lattice: Lattice = field(default_factory=Lattice)
     reindex: Sequence[int] | None = None
     reference: Path | None = None
     plugin: str | None = None
+
+    resolution_limit: float = 0.0
 
     min_fraction: float | None = None
     spot_separation: float = 1.0
     spot_size: float = 1.0
     error_scale: float | None = None
 
-    strong_sigma: int or None = 1
+    strong_sigma: int | None = 1
     anomalous: bool = False
     strict_absorption: bool = False
     fixed_scale_factors: bool = False
     invert_spindle: bool = False
+
+    # Integration optimisation options
+    divergence: float | None = None
+    divergence_esd: float | None = None
+    refl_range: float | None = None
+    refl_range_esd: float | None = None
 
     message: str = ""
     refine_index: Sequence[XDSRefinement] = ('CELL', 'BEAM', 'ORIENTATION', 'AXIS')
@@ -135,21 +147,23 @@ def create_input_file(jobs: Sequence[XDSJob], experiment: Experiment, parameters
     mult = -1 if parameters.invert_spindle else 1
     rot_axis = tuple(numpy.array(experiment.geometry.goniometer) * mult)
 
+    # override detector origin if provided
+    origin = experiment.detector_origin if parameters.beam_center is None else parameters.beam_center
     beamline_text = (
         "!----------------- Beamline parameters\n"
         f"DETECTOR= {detector_type}\n"
         f"NX={experiment.detector_size.x}   NY= {experiment.detector_size.y}\n"
         f"QX={experiment.pixel_size.x:7.5f} QY={experiment.pixel_size.y:7.5f}\n"
-        f"ORGX={experiment.detector_origin.x:5.0f}  ORGY={experiment.detector_origin.y:5.0f}\n"
+        f"ORGX={origin.x:5.0f}  ORGY={origin.y:5.0f}\n"
         f"SENSOR_THICKNESS= {experiment.sensor_thickness:0.3f}\n"
         f"OVERLOAD= {experiment.cutoff_value}\n"
         f"STRONG_PIXEL= {parameters.strong_sigma:0.1f} ! NOTE: SPOT.XDS managed externally \n"
         "TRUSTED_REGION=0.00 1.2\n"
-        "TEST_RESOLUTION_RANGE= 50.0 1.0\n"
+        f"TEST_RESOLUTION_RANGE= 50.0 {max(1.0, parameters.resolution_limit):0.2f}\n"
         "TOTAL_SPINDLE_ROTATION_RANGES= 90 180 30\n"
         "STARTING_ANGLES_OF_SPINDLE_ROTATION= 0 180 15\n"
         "VALUE_RANGE_FOR_TRUSTED_DETECTOR_PIXELS= 6000 30000\n"
-        "INCLUDE_RESOLUTION_RANGE=50.0 0.0\n"
+        f"INCLUDE_RESOLUTION_RANGE=50.0 {parameters.resolution_limit:0.2f}\n"
         "FRACTION_OF_POLARIZATION=0.99\n"
         "POLARIZATION_PLANE_NORMAL= 0.0 1.0 0.0\n"
         f"ROTATION_AXIS= {rot_axis[0]:0.3f} {rot_axis[1]:0.3f} {rot_axis[2]:0.3f}\n"
@@ -191,6 +205,14 @@ def create_input_file(jobs: Sequence[XDSJob], experiment: Experiment, parameters
         extra_text += f'MAXIMUM_ERROR_OF_SPOT_POSITION= {parameters.error_scale * max_pixel_error:0.1f}\n'
         extra_text += f'MAXIMUM_ERROR_OF_SPINDLE_POSITION= {parameters.error_scale * max_angle_error:0.1f}\n'
         extra_text += f'INDEX_ERROR= {parameters.error_scale * 0.05: 0.1f}\n'
+
+    if all((parameters.refl_range, parameters.divergence, parameters.refl_range_esd, parameters.divergence_esd)):
+        extra_text += (
+            f'BEAM_DIVERGENCE=   {parameters.divergence}\n'
+            f'BEAM_DIVERGENCE_E.S.D.=   {parameters.divergence_esd}\n'
+            f'REFLECTING_RANGE=  {parameters.refl_range}\n'
+            f'REFLECTING_RANGE_E.S.D.=  {parameters.refl_range_esd}\n'
+        )
 
     with open('XDS.INP', 'w') as outfile:
         outfile.write(job_text)

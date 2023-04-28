@@ -1,16 +1,22 @@
+from __future__ import annotations
+
+import argparse
 import os
 import re
+import shutil
+
 from collections import defaultdict
 from pathlib import Path
 from typing import Sequence, Tuple
+from mxio import XYPair
 
 import numpy
 import vg
 
 from mxproc import Analysis, reporting
 from mxproc.command import run_command, CommandFailed
-from mxproc.common import StateType, StepType, backup_files, show_warnings, find_lattice
-from mxproc.common import generate_failure, Result, select_resolution, ScoreManager
+from mxproc.common import StateType, StepType, backup_files, show_warnings, find_lattice, find_missing
+from mxproc.common import generate_failure, Result, select_resolution, ScoreManager, summarize_ranges
 from mxproc.engines.xds import io, stats
 from mxproc.engines.xds.indexing import autoindex_trial
 from mxproc.engines.xds.parser import XDSParser, IndexProblem, pointless
@@ -38,11 +44,13 @@ class IndexParamManager:
             self,
             data_range: Tuple[int, int],
             spot_range: Sequence[Tuple[int, int]],
+            skip_range: Sequence[Tuple[int, int]],
             min_sigma: float = DEFAULT_MIN_SIGMA,
-            max_sigma: float = 100
+            max_sigma: float = 100,
+            **extras
     ):
         self.degrees = {}
-        self.params = {'spot_range': spot_range, "data_range": data_range}
+        self.params = {'spot_range': spot_range, "data_range": data_range, 'skip_range': skip_range, **extras}
         self.min_sigma = min_sigma
         self.max_sigma = max_sigma
 
@@ -116,6 +124,34 @@ class IndexParamManager:
 class XDSAnalysis(Analysis):
     prefix = 'xds'
 
+    def get_extras(self, args: argparse.Namespace) -> dict:
+        extras = {}
+        if args.frames:
+            extras.update(
+                data_range=(args.frames[0][0], args.frames[-1][1]),
+                skip_range=find_missing(args.frames),
+                spot_range=args.frames,
+            )
+
+        if args.beam_center:
+            extras.update(beam_center=XYPair(*args.beam_center))
+
+        if args.anom is not None:
+            extras.update(anomalous=args.anom)
+
+        if args.min_sigma:
+            extras.update(min_sigma=args.min_sigma)
+
+        if args.max_sigma:
+            extras.update(max_sigma=args.max_sigma)
+
+        if args.resolution:
+            extras.update(resolution_limit=args.resolution)
+
+        if args.spacegroup:
+            extras.update(lattice=Lattice(spacegroup=args.spacegroup))
+        return extras
+
     def initialize(self, **kwargs):
         results = {}
         logger.info('Working Directories:')
@@ -125,13 +161,13 @@ class XDSAnalysis(Analysis):
             directory = directory if len(self.experiments) == 1 else directory / experiment.name
             directory.mkdir(parents=True, exist_ok=True)
             self.options.working_directories[experiment.identifier] = directory
-
             os.chdir(self.options.working_directories[experiment.identifier])
-
-            io.create_input_file(('ALL',), experiment, io.XDSParameters(
-                data_range=(experiment.frames[0][0], experiment.frames[-1][1]),
-                spot_range=experiment.frames, skip_range=experiment.missing
-            ))
+            io_options = {
+                'data_range': (experiment.frames[0][0], experiment.frames[-1][1]), 'spot_range': experiment.frames,
+                'skip_range': experiment.missing, 'beam_center': experiment.detector_origin
+            }
+            io_options.update(self.options.extras)
+            io.create_input_file(('ALL',), experiment, io.XDSParameters(**io_options))
             path_str = str(directory)
             path_str = path_str.replace(os.path.expanduser('~'), '~', 1)
             logger.info_value(f'{experiment.name}', path_str)
@@ -141,13 +177,14 @@ class XDSAnalysis(Analysis):
     def find_spots(self, **kwargs):
         results = {}
         for experiment in self.experiments:
+            io_options = {
+                'data_range': (experiment.frames[0][0], experiment.frames[-1][1]), 'spot_range': experiment.frames,
+                'skip_range': experiment.missing, 'beam_center': experiment.detector_origin
+            }
+            io_options.update(self.options.extras)
             os.chdir(self.options.working_directories[experiment.identifier])
-
-            io.create_input_file(('XYCORR', 'INIT', 'COLSPOT'), experiment, io.XDSParameters(
-                data_range=(experiment.frames[0][0], experiment.frames[-1][1]),
-                spot_range=experiment.frames, skip_range=experiment.missing
-            ))
-            image_range = '{}-{}'.format(experiment.frames[0][0], experiment.frames[-1][1])
+            io.create_input_file(('XYCORR', 'INIT', 'COLSPOT'), experiment, io.XDSParameters(**io_options))
+            image_range = summarize_ranges(io_options['spot_range'])
 
             try:
                 run_command('xds_par', desc=f'{experiment.name}: Finding strong spots in images {image_range}')
@@ -170,11 +207,14 @@ class XDSAnalysis(Analysis):
 
             result = generate_failure('')
             logger.info(f'{experiment.name}:')
-            param_manager = IndexParamManager(
-                data_range=(experiment.frames[0][0], experiment.frames[-1][1]),
-                spot_range=experiment.frames
-            )
+            io_options = {
+                'data_range': (experiment.frames[0][0], experiment.frames[-1][1]),
+                'spot_range': experiment.frames, 'skip_range': experiment.missing,
+                'anomalous': self.options.anomalous, 'beam_center': experiment.detector_origin
+            }
+            io_options.update(**self.options.extras)
 
+            param_manager = IndexParamManager(**io_options)
             for trial_number in range(MAX_INDEX_TRIES):
                 backup_files('IDXREF.LP')
                 result, retry_requested, retry_messages = autoindex_trial(experiment, param_manager, trial_number)
@@ -205,12 +245,16 @@ class XDSAnalysis(Analysis):
             index_result = self.get_step_result(experiment, StepType.INDEX)
             lattice = index_result.get('lattice')
 
+            io_options = {
+                'data_range': (experiment.frames[0][0], experiment.frames[-1][1]),
+                'spot_range': experiment.frames, 'skip_range': experiment.missing,
+                'anomalous': self.options.anomalous, 'lattice': lattice,
+                'beam_center': experiment.detector_origin,
+                'min_fraction': 0.25
+            }
+            io_options.update(**self.options.extras)
             io.filter_spots()
-            io.create_input_file(('IDXREF', 'DEFPIX', 'XPLAN'), experiment, io.XDSParameters(
-                data_range=(experiment.frames[0][0], experiment.frames[-1][1]),
-                spot_range=experiment.frames, skip_range=experiment.missing,
-                lattice=lattice, min_fraction=0.25,
-            ))
+            io.create_input_file(('IDXREF', 'DEFPIX', 'XPLAN'), experiment, io.XDSParameters(**io_options))
 
             try:
                 run_command('xds_par', desc=f'{experiment.name}: Calculating optimal strategy')
@@ -250,7 +294,7 @@ class XDSAnalysis(Analysis):
                         "- Long Unit-cell axis is closest to beam axis!",
                         f'{longest_axis["name"]}={longest_axis["length"]:0.1f}Å, {longest_axis["beam"]:0.1f}°'
                     )
-                    long_axis_ratio = longest_axis['beam']/max(longest_axis['spindle'], 1)
+                    long_axis_ratio = longest_axis['beam'] / max(longest_axis['spindle'], 1)
                 else:
                     logger.info_value(
                         f'- Unit-Cell axis closest to beam',
@@ -271,7 +315,6 @@ class XDSAnalysis(Analysis):
                     'angle_error': (0.5, 0.1, -2),
                     'pixel_error': (2.0, 0.1, -2),
                     'indexed_fraction': (0.5, 0.2, 6),
-                    #'half_index_percent': (10.0, 0.2, -1)
                 })
 
                 # scoring
@@ -283,15 +326,14 @@ class XDSAnalysis(Analysis):
                     angle_error=index_result.get('quality.angle_error'),
                     pixel_error=index_result.get('quality.pixel_error'),
                     indexed_fraction=resolution_details['indexed_fraction'],
-                    #half_index_percent=index_result.get('quality.half_percent'),
                 )
 
-                # run raddose and estiamte exposure time
-                # FIXME: get proper values from beamline somehow, perhaps as parameters passed into mxproc
-
-                beam = Beam(flux=2.5e12, fwhm_x=60, fwhm_y=10, aperture=20, wavelength=experiment.wavelength)
+                # run raddose and estiamte exposure time, assumes crystal is the same size as the beam
+                # uses beam shape and flux from beamline passed in as options.
+                beam = self.options.beam
+                beam.wavelength = experiment.wavelength
                 success, dose_info = raddose.get_dose(
-                    crystal_size=50, total_range=best_strategy['total_angle'], lattice=lattice, beam=beam
+                    crystal_size=beam.aperture, total_range=best_strategy['total_angle'], lattice=lattice, beam=beam
                 )
 
                 details.update({
@@ -328,13 +370,31 @@ class XDSAnalysis(Analysis):
                 continue
 
             logger.info(f'{experiment.name}:')
-            io.create_input_file(('DEFPIX', 'INTEGRATE', 'CORRECT',), experiment, io.XDSParameters(
-                data_range=(experiment.frames[0][0], experiment.frames[-1][1]),
-                spot_range=experiment.frames, skip_range=experiment.missing
-            ))
-            frame_range = f'{experiment.frames[0][0]}-{experiment.frames[-1][1]}'
+            io_options = {
+                'data_range': (experiment.frames[0][0], experiment.frames[-1][1]),
+                'spot_range': experiment.frames, 'skip_range': experiment.missing,
+                'anomalous': self.options.anomalous,
+            }
+            io_options.update(**self.options.extras)
+            #FIXME:  when overridden, update range_text
+            range_text = summarize_ranges(experiment.frames)
+
+            previous_integration = self.get_step_result(experiment, StepType.INTEGRATE)
+            if self.options.optimize and previous_integration is not None:
+                # copy parameter to new file
+                shutil.copy('GXPARM.XDS', 'XPARM.XDS')
+
+                # inject parameters to extra options
+                io_options.update(
+                    refl_range=previous_integration.get('parameters.refl_range'),
+                    refl_range_esd=previous_integration.get('parameters.refl_range_esd'),
+                    divergence=previous_integration.get('parameters.divergence'),
+                    divergence_esd=previous_integration.get('parameters.divergence_esd'),
+                )
+
+            io.create_input_file(('DEFPIX', 'INTEGRATE', 'CORRECT',), experiment, io.XDSParameters(**io_options))
             try:
-                run_command('xds_par', desc=f'- Integrating frames {frame_range}')
+                run_command('xds_par', desc=f'- Integrating frames {range_text}')
                 integration = XDSParser.parse('INTEGRATE.LP')
                 correction = XDSParser.parse('CORRECT.LP')
             except CommandFailed as err:
@@ -376,7 +436,7 @@ class XDSAnalysis(Analysis):
                 else:
                     result = Result(state=StateType.SUCCESS, details=details)
                     lattice_message = f'{experiment.lattice.name} - #{experiment.lattice.spacegroup}'
-                    logger.info_value(f'- Selected {details["type"]}', lattice_message)
+                    logger.info_value(f'- Recommended {details["type"]}', lattice_message)
                     if experiment.lattice.spacegroup > reference.lattice.spacegroup:
                         reference = experiment
                 results[experiment.identifier] = result
@@ -391,8 +451,7 @@ class XDSAnalysis(Analysis):
             results[experiment.identifier] = result
 
             if result.state == StateType.SUCCESS:
-                unit_cell = " ".join(f"{x:0.2f}" for x in result.details['parameters']['unit_cell'])
-                logger.info_value(f'- Refined Cell:', unit_cell)
+                logger.info_value(f'- Refined Cell:', result.get('lattice').cell_text())
                 self.show_quality(result.details['quality'])
 
         return results
@@ -415,11 +474,13 @@ class XDSAnalysis(Analysis):
                 reference_data = None
 
             try:
-                io.create_input_file(('CORRECT',), experiment, io.XDSParameters(
-                    data_range=(experiment.frames[0][0], experiment.frames[-1][1]), reference=reference_data,
-                    spot_range=experiment.frames, reindex=reindex_matrix, lattice=reindex_lattice,
+                io_options = {}
+                io_options.update(data_range=(experiment.frames[0][0], experiment.frames[-1][1]),
+                    reference=reference_data, spot_range=experiment.frames,
                     skip_range=experiment.missing
-                ))
+                )
+                io_options.update(**self.options.extras, lattice=reindex_lattice, reindex=reindex_matrix)
+                io.create_input_file(('CORRECT',), experiment, io.XDSParameters(**io_options))
                 run_command(
                     'xds_par', desc=f'- Applying symmetry {reindex_lattice.name} - #{reference.lattice.spacegroup}'
                 )
@@ -433,6 +494,7 @@ class XDSAnalysis(Analysis):
                 resolution, resolution_method = select_resolution(correction['statistics'])
                 details = {
                     'parameters': parameters,
+                    'lattice': Lattice(parameters['sg_number'], *parameters['unit_cell']),
                     'lattices': correction['lattices'],
                     'quality': {
                         'frames': stats_tables['frame_statistics'],
@@ -468,6 +530,9 @@ class XDSAnalysis(Analysis):
             logger.error('Skipping! No datasets available to scale!')
             return {}
 
+        anom_option = self.options.anomalous
+        resolution_limit = self.options.extras.get('resolution_limit', 0.0)
+
         scale_configs = []
         quality_contrib = defaultdict(list)
         self.options.merge &= len(scalable_experiments) > 1
@@ -487,8 +552,8 @@ class XDSAnalysis(Analysis):
 
             # one configuration for merging
             scale_configs.append({
-                'anomalous': self.options.anomalous,
-                'shells': resolution_shells(min(resolutions)),
+                'anomalous': anom_option,
+                'shells': resolution_shells(max(resolution_limit, min(resolutions))),
                 'output_file': "XSCALE.HKL",
                 'inputs': inputs,
             })
@@ -503,8 +568,8 @@ class XDSAnalysis(Analysis):
                 resolution = symmetry_result.get('quality.summary.resolution')
                 quality_contrib[output_file].append(symmetry_result.get('quality.summary'))
                 scale_configs.append({
-                    'anomalous': self.options.anomalous,
-                    'shells': resolution_shells(resolution),
+                    'anomalous': anom_option,
+                    'shells': resolution_shells(max(resolution, resolution_limit)),
                     'output_file': output_file,
                     'inputs': [{'input_file': input_file, 'resolution': resolution}],
                 })

@@ -1,29 +1,9 @@
 #!/usr/bin/env python3
 
-import os
-import argparse
-import logging
-
-from mxproc.engines import xds, dials
 from mxproc.common import StepType
-from mxproc import log
+from mxproc import Application
 
-
-parser = argparse.ArgumentParser(description='Find Strong Spots')
-prog_group = parser.add_mutually_exclusive_group()
-prog_group.add_argument('--xds', action='store_true', default=True, help="Use XDS for processing")
-prog_group.add_argument('--dials', action='store_true', default=False, help="Use DIALS for processing")
-
-parser.add_argument('-d', '--dir', type=str, help="Working directory.")
-parser.add_argument('-1', '--single', action='store_true', default=False, help="Don't continue processing after this")
 
 if __name__ == "__main__":
-    log.log_to_console(logging.DEBUG)
-    args = parser.parse_args()
-    if args.dials:
-        Analysis = dials.DIALSAnalysis
-    else:
-        Analysis = xds.XDSAnalysis
-
-    proc = Analysis(directory=args.dir)
-    proc.run(step=StepType.SPOTS, single=not args.stop)
+    app = Application(description="Find Strong Spots", step=StepType.SPOTS)
+    app.run()

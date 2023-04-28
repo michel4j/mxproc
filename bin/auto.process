@@ -1,31 +1,8 @@
 #!/usr/bin/env python3
 
-import argparse
-import logging
+from mxproc import Application
 
-from mxproc.engines import xds, dials
-from mxproc import log
-
-
-parser = argparse.ArgumentParser(description='Automatically Process a dataset')
-parser.add_argument('images', nargs='*', help='Datasets to process. One frame per dataset.')
-group = parser.add_mutually_exclusive_group()
-group.add_argument('--xds', action='store_true', default=True, help="Use XDS for processing")
-group.add_argument('--dials', action='store_true', default=False, help="Use DIALS for processing")
-
-parser.add_argument('-s', '--screen', help='Process a few frames to characterize crystal', action="store_true")
-parser.add_argument('-a', '--anom', help="Friedel's law False", action="store_true")
-parser.add_argument('-d', '--dir', type=str, help="Working Directory")
-parser.add_argument('-m', '--multi', help='Multiple output from datasets scaled together', action="store_true")
-# parser.add_argument('-x', '--achiral', action="store_true", help="Enable Non-chiral mode")
 
 if __name__ == "__main__":
-    log.log_to_console(logging.DEBUG)
-    args = parser.parse_args()
-    if args.dials:
-        Analysis = dials.DIALSAnalysis
-    else:
-        Analysis = xds.XDSAnalysis
-
-    proc = Analysis(*args.images, directory=args.dir, screen=args.screen, anomalous=args.anom, merge=(not args.multi))
-    proc.run()
+    app = Application(description='Automatically Process a dataset')
+    app.run()

@@ -23,5 +23,5 @@ root:
       fields:
         - "BEAM_DIVERGENCE=   <float:divergence>"
         - "BEAM_DIVERGENCE_E.S.D.=   <float:divergence_esd>"
-        - "REFLECTING_RANGE=  <float:range>"
-        - "REFLECTING_RANGE_E.S.D.=  <float:range_esd>"
+        - "REFLECTING_RANGE=  <float:refl_range>"
+        - "REFLECTING_RANGE_E.S.D.=  <float:refl_range_esd>"

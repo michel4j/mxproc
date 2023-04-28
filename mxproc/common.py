@@ -1,10 +1,14 @@
 import json
 import os
 import shutil
+import argparse
+import importlib
+
+from itertools import tee
 from dataclasses import dataclass, field
 from enum import Enum, IntEnum, IntFlag
 from pathlib import Path
-from typing import Tuple, Sequence, Any, List, Dict
+from typing import Tuple, Sequence, Any, List, Dict, Type
 
 import numpy as np
 import yaml
@@ -326,18 +330,6 @@ class ScoreManager:
         ]).sum()
 
 
-def gaussian_fraction(r, fwhm_x, fwhm_y):
-    def integrand(r, theta, sigma_x, sigma_y):
-        return np.exp(
-            -(r ** 2 * np.cos(theta) ** 2 / (2 * sigma_x ** 2) + r ** 2 * np.sin(theta) ** 2 / (2 * sigma_y ** 2))) * r
-
-    sigma_x, sigma_y = fwhm_x / 2.355, fwhm_y / 2.355
-    max_r = max(5 * sigma_x, 5 * sigma_y)
-    total, _ = nquad(integrand, [(0, max_r), (0, 2 * np.pi)], args=(sigma_x, sigma_y))
-    volume, _ = nquad(integrand, [(0, r), (0, 2 * np.pi)], args=(sigma_x, sigma_y))
-    return volume / total
-
-
 def show_warnings(label: str, messages: Sequence[str]):
     """
     Display a list of messages in the log
@@ -368,3 +360,47 @@ def find_lattice(lattice: Lattice, candidates: Sequence[dict]) -> Tuple[Lattice,
             return new_lattice, candidate['reindex_matrix']
 
     return None, None
+
+
+def parse_ranges(text: str) -> Sequence[Tuple[int, int]]:
+    """
+    Parse a range specification from a string into a list of tuples representing the ranges.
+    :param text: input range text in the format "1-10,16,18,25-26"
+    :return: a list of tuples. For example, the above example should return  [(1, 11), (16, 17), (18, 19), (25, 27)]
+    """
+    return [
+        (p[0], p[-1] + 1) for p in
+        (
+            tuple(map(int, v.split('-')))
+            for v in text.split(',') if v.strip()
+        )
+    ]
+
+
+def summarize_ranges(series: Sequence[Tuple[int, int]]) -> str:
+    """
+    Inverse of parse_ranges, generates text string from tuple list
+    :param series: input ranges for example [(1, 11), (16, 17), (18, 19), (25, 27)]
+    :return: text summary for example, "1-10,16,18,25-26"
+    """
+    return ','.join([
+        f'{p[0]}-{p[1]-1}' if p[1] > p[0] + 1 else f'{p[0]}' for p in series
+    ])
+
+
+def find_missing(series: Sequence[Tuple[int, int]]) -> Sequence[Tuple[int, int]]:
+    """
+    Takes the output of parse_ranges and returns another sequence of tuples representing inverse of the range
+    specification.
+
+    :param series: Sequence of tuples, e.g.  [(1, 11), (16, 17), (18, 19), (25, 27)]
+    :return: Another sequence of tuples, for the above example, it would be [(11, 16), (17, 18), (19, 25)]
+    """
+    ### FIXME: replace with itertools.pairwise eventually
+    def pairwise(iterable):
+        # pairwise('ABCDEFG') --> AB BC CD DE EF FG
+        a, b = tee(iterable)
+        next(b, None)
+        return zip(a, b)
+
+    return [(a[1], b[0]) for a, b in pairwise(series)]
