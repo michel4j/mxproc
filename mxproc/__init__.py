@@ -270,7 +270,8 @@ class Analysis(ABC):
 
         while step is not None:
             # always go back to top-level working directory before running step
-            os.chdir(self.options.directory)
+            if self.options.directory.exists():
+                os.chdir(self.options.directory)
 
             step_method = self.methods.get(step)
             try:

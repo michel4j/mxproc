@@ -2,13 +2,13 @@
 requires = ["setuptools", "wheel", "setuptools-scm"]
 build-backend = "setuptools.build_meta"
 
+
 [project]
 name = "mxproc"
 dynamic = ["version"]
-license = "MIT"
+license = {text = "MIT"}
 description = "MX Automated Data Processing Pipeline"
 readme = "README.md"
-requires-python = ">=3.9"
 keywords = ["Data Processing Pipeline", "MX", "AutoProcess"]
 authors = [
     {name = "Michel Fodje", email = "michel4j@gmail.com"}
@@ -22,22 +22,31 @@ classifiers = [
 ]
 dependencies = [
     "mxio",
+    "matplotlib",
     "numpy",
     "pyyaml",
     "tqdm",
     "pandas",
-    "gnuplot",
     "prettytable",
     "vg",
     "scipy"
 ]
 
+
+
 [project.urls]
 Homepage = "https://github.com/michel4j/mxproc"
 
 
-[project.scripts]
-
-# pyproject.toml
 [tool.setuptools_scm]
 
+[tool.setuptools]
+script-files = [
+    'bin/auto.init',
+    'bin/auto.spots',
+    'bin/auto.integrate',
+    'bin/auto.process',
+    'bin/auto.scale',
+    'bin/auto.strategy',
+    'bin/auto.symmetry',
+]
