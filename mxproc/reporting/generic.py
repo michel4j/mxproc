@@ -53,7 +53,7 @@ def summary_table(analysis: Analysis):
             [''],
             ['Score¹'],
             ['Wavelength'],
-            ['Space Group² ⁶'],
+            ['Space Group²⁶'],
             ['Unit Cell Parameters'],
             ['Resolution⁷'],
             ['All Reflections'],
