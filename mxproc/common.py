@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import json
 import os
 import shutil
@@ -216,44 +218,54 @@ RESOLUTION_DESCRIPTION = {
 }
 
 
-def select_resolution(table: List[dict], method: ResolutionMethod = ResolutionMethod.CC_HALF) -> Tuple[float, str]:
+def select_resolution(
+        table: List[dict],
+        method: ResolutionMethod = ResolutionMethod.CC_HALF,
+        manual: float | None = None
+) -> Tuple[float, str]:
     """
     Takes a table of statistics and determines the optimal resolutions
     :param table: The table is a list of dictionaries each with at least the following fields shell, r_meas, cc_half
         i_sigma, signif
     :param method: Resolution Method
+    :param manual: Force manual resolution choice
     :return: selected resolution, description of method used
     """
 
-    data = np.array([
-        (row['shell'], row['r_meas'], row['i_sigma'], row['cc_half'], int(bool(row['signif'].strip())))
-        for row in table
-    ], dtype=[
-        ('shell', float),
-        ('r_meas', float),
-        ('i_sigma', float),
-        ('cc_half', float),
-        ('significance', bool)
-    ])
+    if manual is not None:
+        resolution = manual
+        used_method = ResolutionMethod.MANUAL
 
-    resolution = data['shell'][-1]
-    used_method = ResolutionMethod.EDGE
+    else:
+        data = np.array([
+            (row['shell'], row['r_meas'], row['i_sigma'], row['cc_half'], int(bool(row['signif'].strip())))
+            for row in table
+        ], dtype=[
+            ('shell', float),
+            ('r_meas', float),
+            ('i_sigma', float),
+            ('cc_half', float),
+            ('significance', bool)
+        ])
 
-    if method == ResolutionMethod.SIGMA:
-        candidates = np.argwhere(data['i_sigma'] < 1.0).ravel()
-        if len(candidates):
-            resolution = data['shell'][candidates[0]]
-            used_method = method
-    elif method == ResolutionMethod.CC_HALF:
-        candidates = np.argwhere(data['significance'] == 0).ravel()
-        if len(candidates):
-            resolution = data['shell'][candidates[0]]
-            used_method = method
-    elif method == ResolutionMethod.R_FACTOR:
-        candidates = np.argwhere(data['r_meas'] > 30.0).ravel()
-        if len(candidates):
-            resolution = data['shell'][candidates[0]]
-            used_method = method
+        resolution = data['shell'][-1]
+        used_method = ResolutionMethod.EDGE
+
+        if method == ResolutionMethod.SIGMA:
+            candidates = np.argwhere(data['i_sigma'] < 1.0).ravel()
+            if len(candidates):
+                resolution = data['shell'][candidates[0]]
+                used_method = method
+        elif method == ResolutionMethod.CC_HALF:
+            candidates = np.argwhere(data['significance'] == 0).ravel()
+            if len(candidates):
+                resolution = data['shell'][candidates[0]]
+                used_method = method
+        elif method == ResolutionMethod.R_FACTOR:
+            candidates = np.argwhere(data['r_meas'] > 30.0).ravel()
+            if len(candidates):
+                resolution = data['shell'][candidates[0]]
+                used_method = method
 
     return resolution, RESOLUTION_DESCRIPTION[used_method]
 

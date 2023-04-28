@@ -13,7 +13,7 @@ from datetime import datetime
 
 from importlib.metadata import version, PackageNotFoundError
 from pathlib import Path
-from typing import Sequence, Union, Dict
+from typing import Sequence, Dict, Tuple
 
 import yaml
 
@@ -57,9 +57,8 @@ WORKFLOWS = {
 
 @dataclass
 class AnalysisOptions:
-    files: Sequence[str]
     directory: Path
-    beam: Beam
+    files: Sequence[str] = ()
     working_directories: dict = field(default_factory=dict)
     screen: bool = False
     anomalous: bool = False
@@ -67,6 +66,16 @@ class AnalysisOptions:
     merge: bool = True
     multi: bool = False
     extras: dict = field(default_factory=dict)
+    beam_flux: float = 1e12
+    beam_size: float = 100.
+    beam_fwhm: Tuple[float, float] = (100., 100.)
+
+    def get_beam(self):
+        return Beam(self.beam_flux, *self.beam_fwhm, self.beam_size)
+
+    def update(self, **kwargs):
+        for key, value in kwargs.items():
+            setattr(self, key, value)
 
 
 class Analysis(ABC):
@@ -76,6 +85,7 @@ class Analysis(ABC):
     settings: dict  # Settings dictionary can be used for saving and recovering non-experiment specific information
     workflow: Workflow
     methods: dict   # Dictionary mapping steps to corresponding method
+    args: argparse.Namespace  # Contains parameters passed in through the command line.
 
     prefix: str = 'proc'
 
@@ -84,15 +94,11 @@ class Analysis(ABC):
         Data analysis objects
         :param args: arguments parsed from command line
         """
-        beam = {
-            'flux': args.beam_flux,
-            'aperture': args.beam_size,
-            'fwhm_x': args.beam_fwhm[0],
-            'fwhm_y': args.beam_fwhm[1],
-        }
+
+        self.args = args
 
         # Prepare working directory
-        directory = args.dir
+        directory = self.args.dir
         if directory in ["", None]:
             index = 1
             directory = Path(f"{self.prefix}-{index}")
@@ -101,12 +107,9 @@ class Analysis(ABC):
                 directory = Path(f"{self.prefix}-{index}")
         directory = Path(directory).absolute()
 
-        self.experiments = load_multiple(args.images)
-        merge = (not args.multi) and (len(self.experiments) > 1)
+        self.experiments = load_multiple(self.args.images)
         self.options = AnalysisOptions(
-            files=args.images, directory=directory, screen=args.screen, anomalous=args.anom, merge=merge,
-            beam=Beam(**beam), multi=(len(self.experiments) > 1 and not merge),
-            extras=self.get_extras(args)
+            directory=directory, extras=self.get_extras(self.args), **self.get_options(self.args)
         )
 
         self.results = {}
@@ -134,13 +137,32 @@ class Analysis(ABC):
         """
         return {}
 
+    def get_options(self, args: argparse.Namespace) -> dict:
+        """
+        Extract Parameters from arguments namespace object
+        :param args: Namespace parsed from command line
+        :return: dictionary suitable for initializing or updating a Options object
+        """
+
+        options = {
+            'files': args.images,
+            'screen': args.screen,
+            'anomalous': args.anom,
+            'optimize': args.optimize,
+            'merge': len(self.experiments) > 1 and not args.multi,
+            'multi': len(self.experiments) > 1 and args.multi,
+            'beam_flux': args.beam_flux,
+            'beam_fwhm': args.beam_fwhm,
+            'beam_size': args.beam_size,
+        }
+        return {key: value for key, value in options.items() if value}
+
     def load(self, step: StepType):
         """
         Load an Analysis from a meta file and reset the state to it.
         :param step: analysis step corresponding to the saved metadata
         """
         meta_file = self.options.directory / f'{step.slug()}.meta'
-
         try:
             with gzip.open(meta_file, 'rb') as handle:  # gzip compressed yaml file
                 meta = yaml.load(handle, yaml.Loader)
@@ -150,6 +172,10 @@ class Analysis(ABC):
             self.results = meta['results']
             self.settings = meta['settings']
 
+            # update options with current args
+            self.options.update(**self.get_options(self.args))
+            self.options.extras.update(**self.get_extras(self.args))
+
         except FileNotFoundError:
             raise InvalidAnalysisStep('Checkpoint file missing. Must be loaded from working directory.')
         except (ValueError, TypeError, KeyError):
@@ -158,7 +184,7 @@ class Analysis(ABC):
     def save(self, step: StepType, backup: bool = False):
         """
         Save analysis data to file
-        :param backup: Whether to backup existing files, by default overwrite
+        :param backup: Whether to back up existing files, by default overwrite
         :param step: analysis step corresponding to the saved metadata
         """
         meta = {
@@ -226,7 +252,14 @@ class Analysis(ABC):
 
         # If anything other than initialize, load the previous metadata and use that
         if step != StepType.INITIALIZE:
-            bootstrap = step.prev() if bootstrap is None else bootstrap   # use previous if none
+            # Find bootstrap step based on active workflow
+            if bootstrap is None:
+                for prev_step, next_step in WORKFLOWS[self.workflow].items():
+                    if next_step == step:
+                        bootstrap = prev_step
+                        break
+                else:
+                    bootstrap = step.prev()
             self.load(bootstrap)
 
         start_time = time.time()
@@ -370,9 +403,9 @@ class Application:
         self.parser.add_argument('--max-sigma', type=float, help="Maximum I/Sigma of spots for indexing")
 
         # beam arguments
-        self.parser.add_argument('--beam-flux', type=float, help='Beam flux for dataset in ph/sec.', default=1e12)
-        self.parser.add_argument('--beam-size', type=float, help="Beam aperture size", default=100.)
-        self.parser.add_argument('--beam-fwhm', type=float, nargs=2, help="Beam FWHM", default=(100., 100.))
+        self.parser.add_argument('--beam-flux', type=float, help='Beam flux for dataset in ph/sec.')
+        self.parser.add_argument('--beam-size', type=float, help="Beam aperture size")
+        self.parser.add_argument('--beam-fwhm', type=float, nargs=2, help="Beam FWHM")
         self.step = step
 
     @staticmethod
@@ -389,9 +422,10 @@ class Application:
             module = importlib.import_module(module_name)
             cls = getattr(module, class_name)
             proc = cls(args)
-        except AttributeError:
+        except AttributeError as err:
             proc = None
             logger.error(f'Backend analysis engine {name} not found!')
+            logger.exception(err)
         return proc
 
     def run(self):

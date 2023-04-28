@@ -20,7 +20,7 @@ from mxproc.common import generate_failure, Result, select_resolution, ScoreMana
 from mxproc.engines.xds import io, stats
 from mxproc.engines.xds.indexing import autoindex_trial
 from mxproc.engines.xds.parser import XDSParser, IndexProblem, pointless
-from mxproc.xtal import Experiment, Lattice, resolution_shells, Beam
+from mxproc.xtal import Experiment, Lattice, resolution_shells
 from mxproc.programs import raddose
 from mxproc.log import logger
 
@@ -150,6 +150,7 @@ class XDSAnalysis(Analysis):
 
         if args.spacegroup:
             extras.update(lattice=Lattice(spacegroup=args.spacegroup))
+
         return extras
 
     def initialize(self, **kwargs):
@@ -330,7 +331,7 @@ class XDSAnalysis(Analysis):
 
                 # run raddose and estiamte exposure time, assumes crystal is the same size as the beam
                 # uses beam shape and flux from beamline passed in as options.
-                beam = self.options.beam
+                beam = self.options.get_beam()
                 beam.wavelength = experiment.wavelength
                 success, dose_info = raddose.get_dose(
                     crystal_size=beam.aperture, total_range=best_strategy['total_angle'], lattice=lattice, beam=beam
@@ -447,7 +448,7 @@ class XDSAnalysis(Analysis):
             os.chdir(self.options.working_directories[experiment.identifier])
 
             result = self.apply_symmetry(experiment, reference)
-            result.details['symmetry'] = results[experiment.identifier]
+            result.details['symmetry'] = results[experiment.identifier].details
             results[experiment.identifier] = result
 
             if result.state == StateType.SUCCESS:
@@ -464,7 +465,13 @@ class XDSAnalysis(Analysis):
         """
         logger.info(f'{experiment.name}:')
         integrate_result = self.get_step_result(experiment, StepType.INTEGRATE)
-        reindex_lattice, reindex_matrix = find_lattice(reference.lattice, integrate_result.details['lattices'])
+        target_lattice = self.options.extras.get('lattice', reference.lattice)
+        if target_lattice != reference.lattice:
+            self.settings['symmetry_method'] = 'manually chosen'
+        else:
+            self.settings['symmetry_method'] = 'automatically assigned'
+
+        reindex_lattice, reindex_matrix = find_lattice(target_lattice, integrate_result.details['lattices'])
         if reindex_lattice:
             if reference != experiment:
                 directory = self.options.working_directories[experiment.identifier]
@@ -474,15 +481,15 @@ class XDSAnalysis(Analysis):
                 reference_data = None
 
             try:
-                io_options = {}
-                io_options.update(data_range=(experiment.frames[0][0], experiment.frames[-1][1]),
-                    reference=reference_data, spot_range=experiment.frames,
-                    skip_range=experiment.missing
-                )
-                io_options.update(**self.options.extras, lattice=reindex_lattice, reindex=reindex_matrix)
+                io_options = {
+                    "data_range": (experiment.frames[0][0], experiment.frames[-1][1]),
+                    "spot_range": experiment.frames, "skip_range": experiment.missing,  "reference": reference_data,
+                }
+                io_options.update(**self.options.extras)
+                io_options.update(lattice=reindex_lattice, reindex=reindex_matrix)
                 io.create_input_file(('CORRECT',), experiment, io.XDSParameters(**io_options))
                 run_command(
-                    'xds_par', desc=f'- Applying symmetry {reindex_lattice.name} - #{reference.lattice.spacegroup}'
+                    'xds_par', desc=f'- Applying symmetry {reindex_lattice.name} - #{reindex_lattice.spacegroup}'
                 )
                 run_command('echo "XDS_ASCII.HKL" | xdsstat 20 3 > XDSSTAT.LP', desc=f'- Gathering extra statistics')
                 correction = XDSParser.parse('CORRECT.LP')
@@ -491,7 +498,10 @@ class XDSAnalysis(Analysis):
             except CommandFailed as err:
                 result = generate_failure(f"Command failed: {err}")
             else:
-                resolution, resolution_method = select_resolution(correction['statistics'])
+                resolution, resolution_method = select_resolution(
+                    correction['statistics'], manual=self.options.extras.get('resolution_limit')
+                )
+                self.settings['resolution_method'] = resolution_method
                 details = {
                     'parameters': parameters,
                     'lattice': Lattice(parameters['sg_number'], *parameters['unit_cell']),
@@ -516,8 +526,8 @@ class XDSAnalysis(Analysis):
                 details['quality']['summary']['score'] = self.score(details['quality'])
                 result = Result(state=StateType.SUCCESS, details=details)
         else:
-            logger.warning(f'{experiment.name} not compatible with selected spacegroup #{reference.lattice.spacegroup}')
-            result = generate_failure(f"Incompatible Lattice type: {reference.lattice.character}")
+            logger.warning(f'{experiment.name} not compatible with selected spacegroup #{target_lattice.spacegroup}')
+            result = generate_failure(f"Incompatible Lattice type: {target_lattice.character}")
         return result
 
     def scale(self, **kwargs):
@@ -588,7 +598,11 @@ class XDSAnalysis(Analysis):
             # check twinning and prepare details
             details = {}
             for key, section in scaling.items():
-                resolution, resolution_method = select_resolution(section['statistics'])
+
+                resolution, resolution_method = select_resolution(
+                    section['statistics'], manual=self.options.extras.get('resolution_limit')
+                )
+                self.settings['resolution_method'] = resolution_method
                 quality = self.assess_quality(section['output_file'])
 
                 # xtriage completeness is a fraction
@@ -600,7 +614,7 @@ class XDSAnalysis(Analysis):
                 # as averages of contributing datasets
                 extra_stats = {
                     k: numpy.mean([d.get(k, 0.0) for d in quality_contrib[key]])
-                    for k in ('pixel_error', 'angle_error', 'mosaicity')
+                    for k in ('pixel_error', 'angle_error', 'mosaicity', 'i_sigma_a')
                 }
                 details[key] = {
                     'output': section['output_file'],
@@ -804,7 +818,7 @@ class XDSAnalysis(Analysis):
                 'details': reporting.screening_report(self)
             }
             report_file = str(self.options.directory / "report.html").replace(os.path.expanduser('~'), '~', 1)
-            logger.info_value('- Saving HTML report to file', f'{report_file}')
+            logger.info(f'- HTML report: {report_file}')
             reporting.save_report(report, self.options.directory)
         elif self.options.merge:
             scaled_expt = []
@@ -822,7 +836,7 @@ class XDSAnalysis(Analysis):
                     'details': reporting.merging_details(self)
                 }
                 report_file = str(self.options.directory / "report.html").replace(os.path.expanduser('~'), '~', 1)
-                logger.info_value('- Saving HTML report to file', f'{report_file}')
+                logger.info(f'- HTML report: {report_file}')
                 reporting.save_report(report, self.options.directory)
         else:
             for expt in self.experiments:
@@ -837,7 +851,7 @@ class XDSAnalysis(Analysis):
                         'score': round(scaling.get('quality.summary.score'), 2),
                         'details': reporting.single_details(self, expt)
                     }
-                    logger.info_value('- Saving HTML report to file', f'{report_file}')
+                    logger.info(f'- HTML report: {report_file}')
                     reporting.save_report(report, self.options.directory)
 
 

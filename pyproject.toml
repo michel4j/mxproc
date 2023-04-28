@@ -1,17 +1,25 @@
+[build-system]
+requires = ["setuptools", "wheel", "setuptools-scm"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "mxproc"
-dynamic = ["version", "requirements"]
+dynamic = ["version"]
+license = "MIT"
+description = "MX Automated Data Processing Pipeline"
+readme = "README.md"
+requires-python = ">=3.9"
+keywords = ["Data Processing Pipeline", "MX", "AutoProcess"]
 authors = [
     {name = "Michel Fodje", email = "michel4j@gmail.com"}
 ]
-license = {text = "MIT"}
-description = "MX Automated Data Processing Pipeline"
-readme = "README.md"
-keywords = ["Data Processing Pipeline", "MX", "AutoProcess"]
 classifiers = [
     "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
 ]
-requires-python = ">=3.9"
 dependencies = [
     "mxio",
     "numpy",
@@ -22,7 +30,6 @@ dependencies = [
     "prettytable",
     "vg",
     "scipy"
-
 ]
 
 [project.urls]
@@ -32,14 +39,6 @@ Homepage = "https://github.com/michel4j/mxproc"
 [project.scripts]
 
 
-
-[build-system]
-requires = ["flit_scm"]
-build-backend = "flit_scm:buildapi"
-
 [tool.flit.sdist]
 exclude = [".gitignore"]
 include = ["docs/"]
-
-
-[tool.setuptools_scm]

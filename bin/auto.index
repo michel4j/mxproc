@@ -3,7 +3,6 @@
 from mxproc.common import StepType
 from mxproc import Application
 
-
 if __name__ == "__main__":
     app = Application(description="Auto-Index Dataset", step=StepType.INDEX)
     app.run()

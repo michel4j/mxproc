@@ -52,10 +52,10 @@ def summary_table(analysis: Analysis):
         'data': [
             [''],
             ['Score¹'],
-            ['Wavelength (A)'],
-            ['Space Group²'],
-            ['Unit Cell (A)'],
-            ['Resolution'],
+            ['Wavelength'],
+            ['Space Group² ⁶'],
+            ['Unit Cell Parameters'],
+            ['Resolution⁷'],
             ['All Reflections'],
             ['Unique Reflections'],
             ['Multiplicity'],
@@ -67,18 +67,20 @@ def summary_table(analysis: Analysis):
             ['ISa⁴'],
         ],
         'header': 'column',
-        'notes': ("""
+        'notes': (f"""
             1. Data Quality Score for comparing similar data sets. Typically, values >
                0.8 are excellent, > 0.6 are good, > 0.5 are acceptable, > 0.4
                marginal, and &lt; 0.4 are Barely usable
-            2. This space group was automatically assigned using POINTLESS (see P.R.Evans,
-               Acta Cryst. D62, 72-82, 2005). This procedure is unreliable for incomplete datasets
-               such as those used for screening. Please Inspect the detailed results below.
+            2. POINTLESS was used for automatic spacegroup assignments (see P.R.Evans,
+               Acta Cryst. D62, 72-82, 2005). The procedure is unreliable for incomplete datasets
+               such as those used for screening. Please Inspect the detailed results below. Does
             3. Percentage correlation between intensities from random half-datasets. 
                (see Karplus & Diederichs (2012), Science. 336 (6084): 1030-1033)
             4. The highest I/Sigma(I) that the experimental setup can produce (Diederichs (2010) 
                Acta Cryst D66, 733-740).
             5. Anomalous completeness is shown in parentheses.
+            6. Space group was {analysis.settings['symmetry_method']}
+            7. Resolution limit was set by {analysis.settings['resolution_method']}
         """)
     }
     res_method = -1
@@ -145,7 +147,7 @@ def spacegroup_table(symmetry: Result):
                     [
                         '*' if candidate['number'] == symmetry.get('lattice').spacegroup else '',
                         candidate['name'], candidate['number'], candidate['probability']
-                    ] for candidate in symmetry.get('candidates', [])
+                    ] for candidate in symmetry.get('symmetry.candidates', [])
                 ],
         'header': 'row',
         'notes': (

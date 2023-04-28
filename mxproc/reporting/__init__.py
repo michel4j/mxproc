@@ -10,6 +10,7 @@ from mxproc.common import StepType, load_json
 from .generic import summary_table, lattice_table, spacegroup_table, standard_error_report
 from .generic import shell_statistics_report, frame_statistics_report, wilson_report, twinning_report
 from .screening import screening_summary, screening_strategy, screening_completeness
+from .text import text_report
 
 
 DATA_DIR = Path(__file__).parent / 'data'
@@ -36,8 +37,8 @@ def save_report(report: dict, path: Path):
     with open(report_file, 'w') as file:
         json.dump(report, file, indent=4)
 
-    # with open(text_file, 'w') as handle:
-    #     handle.write(text_report(report['details']))
+    with open(text_file, 'w') as handle:
+        handle.write(text_report(report['details']))
 
     shutil.copy(DATA_DIR / 'report.html', path)
     shutil.copy(DATA_DIR / 'report.min.js', path)

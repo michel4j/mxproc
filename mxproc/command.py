@@ -39,7 +39,7 @@ class Command:
         with open(self.outfile, 'a') as stdout:
             start_time = time.time()
             start_str = datetime.now().strftime('%H:%M:%S')
-            bar_fmt = "{desc}{elapsed}{postfix}"
+            bar_fmt = "{desc: <83}{elapsed}{postfix}"
             with tqdm(desc=f"{start_str} {self.label} ... ", miniters=1, leave=False, bar_format=bar_fmt) as spinner:
                 proc = await asyncio.create_subprocess_shell(self.shell_cmd, stdin=subprocess.DEVNULL, stdout=stdout, stderr=stdout)
                 while proc.returncode is None:
@@ -51,7 +51,7 @@ class Command:
                 logger.error_value(f"{self.label} [FAILED]", elapsed_str, spacer=' ')
                 raise subprocess.CalledProcessError(proc.returncode, self.shell_cmd)
             else:
-                logger.info_value(f"{self.label}", elapsed_str, spacer=' ')
+                logger.info(f"{self.label}")
 
     def run_sync(self):
         """
