@@ -38,7 +38,6 @@ Homepage = "https://github.com/michel4j/mxproc"
 
 [project.scripts]
 
+# pyproject.toml
+[tool.setuptools_scm]
 
-[tool.flit.sdist]
-exclude = [".gitignore"]
-include = ["docs/"]
