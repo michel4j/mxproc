@@ -81,8 +81,16 @@ def screening_strategy(strategy):
             ['Start Angle', f'{strategy.get("strategy.start_angle"):0.2f}°'],
             ['Maximum Delta Angle¹', f'{strategy.get("strategy.max_delta"):0.2f}°'],
             ['Minimum Total Angle Range²', f'{strategy.get("strategy.total_angle"):0.2f}°'],
-            ['Exposure Rate Avg ³', f'{strategy.get("strategy.exposure_rate"):0.2f}°/s'],
-            ['Exposure Rate Low³', f'{strategy.get("strategy.exposure_rate_worst"):0.2f}°/s'],
+            ['Exposure Rate Avg ³', (
+                f'{strategy.get("strategy.exposure_rate"):0.2f}°/s | '
+                f'0.2°/{0.2 / strategy.get("strategy.exposure_rate"):0.2f} s | '
+                f'0.1°/{0.1 / strategy.get("strategy.exposure_rate"):0.2f} s '
+            )],
+            ['Exposure Rate Low³', (
+                f'{strategy.get("strategy.exposure_rate_worst"):0.2f}°/s | '
+                f'0.2°/{0.2 / strategy.get("strategy.exposure_rate_worst"):0.2f} s | '
+                f'0.1°/{0.1 / strategy.get("strategy.exposure_rate_worst"):0.2f} s '
+            )],
             ['Total Exposure Time', f'{strategy.get("strategy.total_exposure"):0.2f} s'],
             ['Total Worst Case Exposure Time', f'{strategy.get("strategy.total_exposure_worst"):0.2f} s'],
         ],
