@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 
+import sys
 from mxproc.common import StepType
 from mxproc import Application
 
 
 if __name__ == "__main__":
     app = Application(description="Determine and Apply Symmetry", step=StepType.SYMMETRY)
-    app.run()
+    sys.exit(app.run())

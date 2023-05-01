@@ -52,7 +52,7 @@ INDEX_STATES = {
     IndexProblem.POOR_SOLUTION: (StateType.WARNING, 'Indexing solution too poor'),
     IndexProblem.REFINEMENT_FAILED: (StateType.FAILURE, 'Failed to refine solution'),
     IndexProblem.INDEXING_FAILED: (StateType.FAILURE, 'Auto-Indexing failed for unknown reason'),
-    IndexProblem.INVERTED_AXIS: (StateType.WARNING, 'Rotation axis may be inverted'),
+    IndexProblem.INVERTED_AXIS: (StateType.WARNING, 'Experimental Parameters may be poorly specified'),
     IndexProblem.FRACTIONAL_INDICES: (StateType.WARNING, 'Many half-integer cluster indices'),
     IndexProblem.WRONG_SPOT_PARAMETERS: (StateType.WARNING, 'Spot are closer than allowed')
 }

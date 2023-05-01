@@ -121,7 +121,7 @@ def log_to_file(filename: str, level: int = logging.DEBUG):
     logging.getLogger('').addHandler(logfile)
 
 
-def log_value(descr, value, style=TermColor.italics, width=79, spacer='.'):
+def log_value(descr, value, style=TermColor.bold, width=79, spacer='.'):
     """
     Format a log line of the form ' Description: ............... value '
 

@@ -251,16 +251,18 @@ class XDSAnalysis(Analysis):
                 'spot_range': experiment.frames, 'skip_range': experiment.missing,
                 'anomalous': self.options.anomalous, 'lattice': lattice,
                 'beam_center': experiment.detector_origin,
-                'min_fraction': 0.25
+                'min_fraction': 0.10
             }
             io_options.update(**self.options.extras)
             io.filter_spots()
             io.create_input_file(('IDXREF', 'DEFPIX', 'XPLAN'), experiment, io.XDSParameters(**io_options))
 
             try:
-                run_command('xds_par', desc=f'{experiment.name}: Calculating optimal strategy')
+                run_command(
+                    'xds_par', desc=f'{experiment.name}: Calculating optimal strategy', check_files=('XPLAN.LP',)
+                )
                 details = XDSParser.parse('XPLAN.LP')
-            except CommandFailed as err:
+            except (FileNotFoundError, CommandFailed) as err:
                 result = generate_failure(f"Command failed: {err}")
             else:
                 cell_axis = {
@@ -395,7 +397,9 @@ class XDSAnalysis(Analysis):
 
             io.create_input_file(('DEFPIX', 'INTEGRATE', 'CORRECT',), experiment, io.XDSParameters(**io_options))
             try:
-                run_command('xds_par', desc=f'- Integrating frames {range_text}')
+                run_command(
+                    'xds_par', desc=f'- Integrating frames {range_text}', check_files=['INTEGRATE.LP', 'CORRECT.LP']
+                )
                 integration = XDSParser.parse('INTEGRATE.LP')
                 correction = XDSParser.parse('CORRECT.LP')
             except CommandFailed as err:
@@ -429,7 +433,10 @@ class XDSAnalysis(Analysis):
                 logger.info(f'{experiment.name}:')
                 symmetry_experiments.append(experiment)
                 try:
-                    run_command('pointless xdsin INTEGRATE.HKL xmlout pointless.xml', desc=f'- Determining symmetry')
+                    run_command(
+                        'pointless xdsin INTEGRATE.HKL xmlout pointless.xml', desc=f'- Determining symmetry',
+                        check_files=['pointless.xml']
+                    )
                     details = pointless.parse_pointless('pointless.xml')
                     experiment.lattice = details['lattice']
                 except CommandFailed as err:
@@ -667,7 +674,7 @@ class XDSAnalysis(Analysis):
         try:
             log_file = str(Path(data_file).absolute().parent / "XTRIAGE.LP")
             command = f'phenix.xtriage {data_file} loggraphs=True nproc=8 log={log_file}'
-            run_command(command, f'- Assessing quality of "{data_file}"')
+            run_command(command, f'- Assessing quality of "{data_file}"', check_files=[log_file])
             quality = XDSParser.parse(log_file)
         except CommandFailed:
             quality = {}
@@ -813,16 +820,19 @@ class XDSAnalysis(Analysis):
                     names.append(expt.name)
                     scores.append(strategy.get('quality.score'))
 
-            name_label = ", ".join(names)
-            report = {
-                'title': f"{anom} Screening of {name_label}",
-                'kind': 'MX Screening',
-                'score': round(scores[0], 2),
-                'details': reporting.screening_report(self)
-            }
-            report_file = str(self.options.directory / "report.html").replace(os.path.expanduser('~'), '~', 1)
-            logger.info(f'- HTML report: {report_file}')
-            reporting.save_report(report, self.options.directory)
+            if scores:
+                name_label = ", ".join(names)
+                report = {
+                    'title': f"{anom} Screening of {name_label}",
+                    'kind': 'MX Screening',
+                    'score': round(scores[0], 2),
+                    'details': reporting.screening_report(self)
+                }
+                report_file = str(self.options.directory / "report.html").replace(os.path.expanduser('~'), '~', 1)
+                logger.info(f'- HTML report: {report_file}')
+                reporting.save_report(report, self.options.directory)
+            else:
+                raise CommandFailed('No successful results to report on!')
         elif self.options.merge:
             scaled_expt = []
             for expt in self.experiments:
@@ -841,10 +851,17 @@ class XDSAnalysis(Analysis):
                 report_file = str(self.options.directory / "report.html").replace(os.path.expanduser('~'), '~', 1)
                 logger.info(f'- HTML report: {report_file}')
                 reporting.save_report(report, self.options.directory)
+            else:
+                raise CommandFailed('No successful results to report on!')
         else:
+            scaled_expt = []
             for expt in self.experiments:
                 scaling = self.get_step_result(expt, StepType.SCALE)
                 if scaling:
+                    scaled_expt.append((expt, scaling))
+
+            if scaled_expt:
+                for expt, scaling in scaled_expt:
                     work_dir = self.options.working_directories[expt.identifier]
                     os.chdir(work_dir)
                     report_file = str(work_dir / "report.html").replace(os.path.expanduser('~'), '~', 1)
@@ -856,6 +873,6 @@ class XDSAnalysis(Analysis):
                     }
                     logger.info(f'- HTML report: {report_file}')
                     reporting.save_report(report, self.options.directory)
-
-
+            else:
+                raise CommandFailed('No successful results to report on!')
 

@@ -3,7 +3,7 @@ import subprocess
 import time
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Union
+from typing import Union, Sequence
 
 from tqdm import tqdm
 
@@ -18,18 +18,34 @@ class CommandFailed(Exception):
     ...
 
 
+def files_exist(files: Sequence[str]) -> bool:
+    """
+    Check if a list of files exist on disk
+    :param files: files to check
+    :return: True if they exist, false otherwise
+    """
+
+    for file in files:
+        if not Path(file).exists():
+            return False
+
+    return True
+
+
 class Command:
-    def __init__(self, shell_cmd: str, logfile: Union[str, Path] = "commands.log", desc: str = ""):
+    def __init__(self, shell_cmd: str, logfile: Union[str, Path] = "commands.log", desc: str = "", check_files: Sequence[str] = ()):
         """
         Objects for running commands
 
         :param shell_cmd: command arguments
         :param logfile: destination of standard output including errors
         :param desc: descriptive label of command
+        :param check_files: At the end of the command these files must exist, otherwise the command failed
         """
         self.outfile = Path(logfile)
         self.shell_cmd = shell_cmd
         self.label = desc
+        self.check_files = check_files
 
     async def exec(self):
         """
@@ -46,12 +62,12 @@ class Command:
                     spinner.update()
                     await asyncio.sleep(.05)
             elapsed = time.time() - start_time
-            elapsed_str = f'[{timedelta(seconds=round(elapsed))}]'
-            if proc.returncode != 0:
-                logger.error_value(f"{self.label} [FAILED]", elapsed_str, spacer=' ')
-                raise subprocess.CalledProcessError(proc.returncode, self.shell_cmd)
+
+            if proc.returncode != 0 or not files_exist(self.check_files):
+                logger.error_value(self.label, "[FAILED]", spacer=' ')
+                raise CommandFailed(self.shell_cmd)
             else:
-                logger.info(f"{self.label}")
+                logger.info(self.label)
 
     def run_sync(self):
         """
@@ -64,7 +80,7 @@ class Command:
                 output = subprocess.check_output(self.shell_cmd, shell=True)
                 stdout.write(output)
 
-        except subprocess.CalledProcessError as err:
+        except (subprocess.CalledProcessError, CommandFailed) as err:
             raise CommandFailed(f"{err}")
 
     def run_async(self):
@@ -75,13 +91,13 @@ class Command:
         loop = asyncio.get_event_loop()
         try:
             tasks = [loop.create_task(self.exec())]
-            wait_tasks = asyncio.wait(tasks)
+            wait_tasks = asyncio.gather(*tasks)
             loop.run_until_complete(wait_tasks)
-        except subprocess.CalledProcessError as err:
+        except (subprocess.CalledProcessError, CommandFailed) as err:
             raise CommandFailed(f"{err}")
 
 
-def run_command(cmd, desc: str = "", logfile: Union[str, Path] = "commands.log", sync=False):
+def run_command(cmd, desc: str = "", logfile: Union[str, Path] = "commands.log", sync=False, check_files: Sequence[str] = ()):
     """
     Creates and executes a command instance
 
@@ -89,9 +105,10 @@ def run_command(cmd, desc: str = "", logfile: Union[str, Path] = "commands.log",
     :param logfile: destination of standard output including errors
     :param desc: descriptive label of command
     :param sync: Run synchronously, default False
+    :param check_files: At the end of the command these files must exist, otherwise the command failed
     """
 
-    command = Command(cmd, desc=desc, logfile=logfile)
+    command = Command(cmd, desc=desc, logfile=logfile, check_files=check_files)
     if sync:
         command.run_sync()
     else:

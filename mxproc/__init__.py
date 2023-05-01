@@ -242,14 +242,16 @@ class Analysis(ABC):
             step: StepType = StepType.INITIALIZE,
             bootstrap: StepType | None = None,
             single: bool = False
-    ):
+    ) -> int:
         """
         Perform the analysis and gather the harvested results
         :param bootstrap: analysis step to use as a basis from the requested step. Must be higher than the previous workflow step
         :param single: Whether to run the full analysis from this step to the end of the workflow
         :param step: AnalysisStep to run
+        :return: valid python exit code, 0 = success, 1 = error, etc
         """
 
+        exit_code = 0
         # If anything other than initialize, load the previous metadata and use that
         if step != StepType.INITIALIZE:
             # Find bootstrap step based on active workflow
@@ -279,6 +281,7 @@ class Analysis(ABC):
                 results = step_method()
             except CommandFailed as err:
                 logger.error(f'Data Processing Failed at {step.name}: {err}. Aborting!')
+                exit_code = 1
                 break
             else:
                 # REPORTING step does not have results
@@ -290,6 +293,7 @@ class Analysis(ABC):
 
         used_time = time.strftime('%H:%M:%S', time.gmtime(time.time() - start_time))
         logger.banner(f'Processing Duration: {used_time}', line='-')
+        return exit_code
 
     @abstractmethod
     def initialize(self, **kwargs):
@@ -437,5 +441,6 @@ class Application:
         args = self.parser.parse_args()
         proc = self.get_engine(args)
         if proc is not None:
-            proc.run(step=self.step, single=args.single)
+            return proc.run(step=self.step, single=args.single)
+        return 1
 
