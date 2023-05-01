@@ -81,12 +81,12 @@ def screening_strategy(strategy):
             ['Start Angle', f'{strategy.get("strategy.start_angle"):0.2f}°'],
             ['Maximum Delta Angle¹', f'{strategy.get("strategy.max_delta"):0.2f}°'],
             ['Minimum Total Angle Range²', f'{strategy.get("strategy.total_angle"):0.2f}°'],
-            ['Exposure Rate Avg ³', (
+            ['Exposure Rate Avg Dose³', (
                 f'{strategy.get("strategy.exposure_rate"):0.1f}°/s | '
                 f'0.2°/{0.2 / strategy.get("strategy.exposure_rate"):0.1f} s | '
                 f'0.1°/{0.1 / strategy.get("strategy.exposure_rate"):0.1f} s '
             )],
-            ['Exposure Rate Low³', (
+            ['Exposure Rate Low Dose³', (
                 f'{strategy.get("strategy.exposure_rate_worst"):0.1f}°/s | '
                 f'0.2°/{0.2 / strategy.get("strategy.exposure_rate_worst"):0.1f} s | '
                 f'0.1°/{0.1 / strategy.get("strategy.exposure_rate_worst"):0.1f} s '
@@ -100,7 +100,7 @@ def screening_strategy(strategy):
                beamline allows.
             2. Minimum angle range for complete data. This is the bare minimum and it is strongly recommended to 
                to collect a full 180 degrees of data and often even more.
-            3. Use the Avg exposure rate for Helical data collection. Use the Low exposure rate if the crystal will
+            3. Use the Avg Dose rate for Helical data collection. Use the Low Dose exposure rate if the crystal will
                not be translated during the experiment. Dose estimates make use of RADDOSE-3D: 
                see Bury et al PROTEIN SCIENCE 2018 VOL 27:217—228, https://doi.org/10.1002/pro.3302
              """),
