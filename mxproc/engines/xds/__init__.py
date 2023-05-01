@@ -814,19 +814,22 @@ class XDSAnalysis(Analysis):
         if self.options.screen:
             names = []
             scores = []
+            strategies = []
             for expt in self.experiments:
                 strategy = self.get_step_result(expt, StepType.STRATEGY)
                 if strategy:
+                    strategies.append(strategy.get('strategy'))
                     names.append(expt.name)
                     scores.append(strategy.get('quality.score'))
 
-            if scores:
+            if scores and strategies:
                 name_label = ", ".join(names)
                 report = {
                     'title': f"{anom} Screening of {name_label}",
                     'kind': 'MX Screening',
                     'score': round(scores[0], 2),
-                    'details': reporting.screening_report(self)
+                    'strategy': strategies[0],
+                    'details': reporting.screening_report(self),
                 }
                 report_file = str(self.options.directory / "report.html").replace(os.path.expanduser('~'), '~', 1)
                 logger.info(f'- HTML report: {report_file}')
