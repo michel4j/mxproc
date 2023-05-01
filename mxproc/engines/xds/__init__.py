@@ -754,11 +754,11 @@ class XDSAnalysis(Analysis):
         logger.info_value(f'- Recommended High-Resolution Limit', f'{desired_resolution:0.2f} Å')
         logger.info_value(
             f'- Maximum Exposure Rate (recommended, worst-case)',
-            f'{exposure_rate:0.2f} "/°, {exposure_rate_worst:0.2f} "/°'
+            f'{exposure_rate:0.2f}°/s, {exposure_rate_worst:0.2f}°/s'
         )
         logger.info_value(
             f'- Maximum Total Exposure (recommended, worst-case)',
-            f'{total_exposure:0.1f} ", {total_exposure_worst:0.1f} "'
+            f'{total_exposure:0.1f} s, {total_exposure_worst:0.1f} s'
         )
         logger.info_value(f'- Screening Score', f"{score:0.2f}")
 

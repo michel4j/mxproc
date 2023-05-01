@@ -92,8 +92,8 @@ def get_dose(crystal_size: float, total_range: float, lattice: Lattice, beam: Be
     else:
         total_exposure = DOSE_LIMIT / details['average_dwd']
         total_exposure_worst = DOSE_LIMIT / details['max_dose']
-        exposure_rate = total_exposure / total_range
-        exposure_rate_worst = total_exposure_worst / total_range
+        exposure_rate = total_range / total_exposure
+        exposure_rate_worst = total_range / total_exposure_worst
         details.update({
             "total_exposure": total_exposure,
             "total_exposure_worst": total_exposure_worst,
