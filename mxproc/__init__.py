@@ -112,6 +112,10 @@ class Analysis(ABC):
             directory=directory, extras=self.get_extras(self.args), **self.get_options(self.args)
         )
 
+        if not directory.exists():
+            directory.mkdir(parents=True, exist_ok=True)
+        log.log_to_file(str(directory / "auto.log"))
+
         self.results = {}
         self.settings = {}
 
