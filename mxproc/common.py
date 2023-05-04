@@ -400,6 +400,14 @@ def summarize_ranges(series: Sequence[Tuple[int, int]]) -> str:
     ])
 
 
+### FIXME: replace with itertools.pairwise eventually
+def pairwise(iterable):
+    # pairwise('ABCDEFG') --> AB BC CD DE EF FG
+    a, b = tee(iterable)
+    next(b, None)
+    return zip(a, b)
+
+
 def find_missing(series: Sequence[Tuple[int, int]]) -> Sequence[Tuple[int, int]]:
     """
     Takes the output of parse_ranges and returns another sequence of tuples representing inverse of the range
@@ -408,11 +416,6 @@ def find_missing(series: Sequence[Tuple[int, int]]) -> Sequence[Tuple[int, int]]
     :param series: Sequence of tuples, e.g.  [(1, 11), (16, 17), (18, 19), (25, 27)]
     :return: Another sequence of tuples, for the above example, it would be [(11, 16), (17, 18), (19, 25)]
     """
-    ### FIXME: replace with itertools.pairwise eventually
-    def pairwise(iterable):
-        # pairwise('ABCDEFG') --> AB BC CD DE EF FG
-        a, b = tee(iterable)
-        next(b, None)
-        return zip(a, b)
+
 
     return [(a[1], b[0]) for a, b in pairwise(series)]

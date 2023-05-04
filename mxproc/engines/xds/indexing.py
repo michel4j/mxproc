@@ -26,10 +26,9 @@ def autoindex_trial(experiment: Experiment, manager, trial: int) -> Tuple[Result
         result = generate_failure(f"Command failed: {err}")
 
     retry_messages = []
-
     request_retry = (
-            result.state == StateType.FAILURE and
-            IndexProblem.SOFTWARE_ERROR not in result.flags
+            result.state == StateType.FAILURE
+            and IndexProblem.SOFTWARE_ERROR not in IndexProblem(result.flags)
     )
 
     if request_retry:

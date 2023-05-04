@@ -42,15 +42,14 @@ class IndexParamManager:
 
     def __init__(
             self,
-            data_range: Tuple[int, int],
+            data_range: Sequence[Tuple[int, int]],
             spot_range: Sequence[Tuple[int, int]],
-            skip_range: Sequence[Tuple[int, int]],
             min_sigma: float = DEFAULT_MIN_SIGMA,
             max_sigma: float = 100,
             **extras
     ):
         self.degrees = {}
-        self.params = {'spot_range': spot_range, "data_range": data_range, 'skip_range': skip_range, **extras}
+        self.params = {'spot_range': spot_range, "data_range": data_range, **extras}
         self.min_sigma = min_sigma
         self.max_sigma = max_sigma
 
@@ -127,11 +126,7 @@ class XDSAnalysis(Analysis):
     def get_extras(self, args: argparse.Namespace) -> dict:
         extras = {}
         if args.frames:
-            extras.update(
-                data_range=(args.frames[0][0], args.frames[-1][1]),
-                skip_range=find_missing(args.frames),
-                spot_range=args.frames,
-            )
+            extras.update(data_range=args.frames, spot_range=args.frames)
 
         if args.beam_center:
             extras.update(beam_center=XYPair(*args.beam_center))
@@ -164,8 +159,8 @@ class XDSAnalysis(Analysis):
             self.options.working_directories[experiment.identifier] = directory
             os.chdir(self.options.working_directories[experiment.identifier])
             io_options = {
-                'data_range': (experiment.frames[0][0], experiment.frames[-1][1]), 'spot_range': experiment.frames,
-                'skip_range': experiment.missing, 'beam_center': experiment.detector_origin
+                'data_range': experiment.frames, 'spot_range': experiment.frames,
+                'beam_center': experiment.detector_origin
             }
             io_options.update(self.options.extras)
             io.create_input_file(('ALL',), experiment, io.XDSParameters(**io_options))
@@ -179,8 +174,8 @@ class XDSAnalysis(Analysis):
         results = {}
         for experiment in self.experiments:
             io_options = {
-                'data_range': (experiment.frames[0][0], experiment.frames[-1][1]), 'spot_range': experiment.frames,
-                'skip_range': experiment.missing, 'beam_center': experiment.detector_origin
+                'data_range': experiment.frames, 'spot_range': experiment.frames,
+                'beam_center': experiment.detector_origin
             }
             io_options.update(self.options.extras)
             os.chdir(self.options.working_directories[experiment.identifier])
@@ -209,11 +204,15 @@ class XDSAnalysis(Analysis):
             result = generate_failure('')
             logger.info(f'{experiment.name}:')
             io_options = {
-                'data_range': (experiment.frames[0][0], experiment.frames[-1][1]),
-                'spot_range': experiment.frames, 'skip_range': experiment.missing,
-                'anomalous': self.options.anomalous, 'beam_center': experiment.detector_origin
+                'data_range': experiment.frames,
+                'spot_range': experiment.frames,
+                'anomalous': self.options.anomalous,
+                'beam_center': experiment.detector_origin
             }
             io_options.update(**self.options.extras)
+
+            # ignore lattice
+            io_options.pop('lattice', None)
 
             param_manager = IndexParamManager(**io_options)
             for trial_number in range(MAX_INDEX_TRIES):
@@ -247,8 +246,8 @@ class XDSAnalysis(Analysis):
             lattice = index_result.get('lattice')
 
             io_options = {
-                'data_range': (experiment.frames[0][0], experiment.frames[-1][1]),
-                'spot_range': experiment.frames, 'skip_range': experiment.missing,
+                'data_range': experiment.frames,
+                'spot_range': experiment.frames,
                 'anomalous': self.options.anomalous, 'lattice': lattice,
                 'beam_center': experiment.detector_origin,
                 'min_fraction': 0.10
@@ -374,13 +373,14 @@ class XDSAnalysis(Analysis):
 
             logger.info(f'{experiment.name}:')
             io_options = {
-                'data_range': (experiment.frames[0][0], experiment.frames[-1][1]),
-                'spot_range': experiment.frames, 'skip_range': experiment.missing,
+                'data_range': experiment.frames,
+                'spot_range': experiment.frames,
                 'anomalous': self.options.anomalous,
             }
             io_options.update(**self.options.extras)
-            #FIXME:  when overridden, update range_text
-            range_text = summarize_ranges(experiment.frames)
+            io_options.pop('lattice', None)     # ignore lattice parameter if specified,
+
+            range_text = summarize_ranges(io_options['data_range'])
 
             previous_integration = self.get_step_result(experiment, StepType.INTEGRATE)
             if self.options.optimize and previous_integration is not None:
@@ -489,8 +489,9 @@ class XDSAnalysis(Analysis):
 
             try:
                 io_options = {
-                    "data_range": (experiment.frames[0][0], experiment.frames[-1][1]),
-                    "spot_range": experiment.frames, "skip_range": experiment.missing,  "reference": reference_data,
+                    "data_range": experiment.frames,
+                    "spot_range": experiment.frames,
+                    "reference": reference_data,
                 }
                 io_options.update(**self.options.extras)
                 io_options.update(lattice=reindex_lattice, reindex=reindex_matrix)

@@ -157,22 +157,20 @@ class Experiment:
     sensor_thickness: float
     start_angle: float = 0.0
     lattice: Lattice = field(default_factory=Lattice)
-    missing: Sequence[Tuple[int, int]] = ()
 
 
 def compress_series(values: ArrayLike) -> Sequence[Tuple[int, int]]:
     """
     Takes a sequence of integers such as [1,2,3,4,6,7,8,10] and compress it as a list of
-    contiguous tuples [(1,4),(6,8), (10,10)]"
+    contiguous range tuples [(1,5),(6,9), (10,11)]"
 
     :param values: ArrayLike
     :return: Sequence of Tuples.
     """
-
     values = numpy.array(values).astype(int)
     values.sort()
     return [
-        (int(chunk[0]), int(chunk[-1]))
+        (int(chunk[0]), int(chunk[-1]) + 1)
         for chunk in numpy.split(values, numpy.where(numpy.diff(values) > 1)[0] + 1)
         if len(chunk)
     ]
@@ -232,13 +230,7 @@ def load_experiment(filename: Union[str, Path]) -> Sequence[Experiment]:
             geometry=dset.frame.geometry,
             delta_angle=dset.frame.delta_angle,
             start_angle=sweep[0, 1],
-            glob=wildcard,
-            missing=compress_series(
-                numpy.setdiff1d(
-                    numpy.arange(sweep[0, 0], sweep[-1, 0] + 1),
-                    sweep[:, 0], assume_unique=True
-                )
-            )
+            glob=wildcard
         )
         for i, sweep in enumerate(sweeps)
     ]

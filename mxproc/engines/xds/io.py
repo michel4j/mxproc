@@ -9,8 +9,9 @@ from typing import Union, Literal, Tuple, Sequence
 import numpy
 
 from mxproc.xtal import Lattice, Experiment
+from mxproc.common import find_missing
 from mxio import XYPair
-from mxproc.log import logger
+
 
 XDSJob = Literal["XYCORR", "INIT", "COLSPOT", "IDXREF",  "XPLAN", "DEFPIX", "INTEGRATE", "CORRECT", "ALL"]
 XDSRefinement = Literal["CELL", "BEAM", "ORIENTATION", "AXIS",  "DISTANCE", "POSITION", "SEGMENT", "ALL"]
@@ -18,9 +19,8 @@ XDSRefinement = Literal["CELL", "BEAM", "ORIENTATION", "AXIS",  "DISTANCE", "POS
 
 @dataclass
 class XDSParameters:
-    data_range: Tuple[int, int]
+    data_range: Sequence[Tuple[int, int]]
     spot_range: Sequence[Tuple[int, int]]
-    skip_range: Sequence[Tuple[int, int]] = ()
 
     format: str = ""
     beam_center: XYPair | None = None
@@ -109,16 +109,16 @@ def create_input_file(jobs: Sequence[XDSJob], experiment: Experiment, parameters
         f"X-RAY_WAVELENGTH=  {experiment.wavelength:7.5f}\n"
         f"DETECTOR_DISTANCE= {experiment.distance:5.1f}\n"
         f"STARTING_ANGLE=    {experiment.start_angle:5.1f}\n"
-        f"STARTING_FRAME=    {parameters.data_range[0]}\n"
+        f"STARTING_FRAME=    {parameters.data_range[0][0]}\n"
         f"OSCILLATION_RANGE= {experiment.delta_angle:4.2f}\n"
         f"FRIEDEL'S_LAW= {friedel_flag}\n"
         f"NAME_TEMPLATE_OF_DATA_FRAMES={template_path} {parameters.format}\n"
-        f"DATA_RANGE=    {parameters.data_range[0]} {parameters.data_range[1]}\n"
+        f"DATA_RANGE=    {parameters.data_range[0][0]} {parameters.data_range[-1][1]}\n"
     )
     for start, end in parameters.spot_range:
         dataset_text += f"SPOT_RANGE=    {start} {end}\n"
 
-    for start, end in parameters.skip_range:
+    for start, end in find_missing(parameters.data_range):
         dataset_text += f"EXCLUDE_DATA_RANGE=    {start} {end}\n"
 
     # Allow injecting an external library for reading dataset files

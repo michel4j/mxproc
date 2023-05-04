@@ -1,5 +1,5 @@
 import xml.dom.minidom
-from typing import Sequence
+from fractions import Fraction
 from mxproc.xtal import Lattice, SPACEGROUP_NAMES
 
 
@@ -14,7 +14,8 @@ def get_spacegroup(element: xml.dom.minidom.Element) -> dict:
     probability = float(element.getElementsByTagName('TotalProb')[0].firstChild.nodeValue)
     screw_axis_prob = float(element.getElementsByTagName('SysAbsProb')[0].firstChild.nodeValue)
     reindex_list = element.getElementsByTagName('ReindexMatrix')[0].firstChild.nodeValue.split()
-    reindex = list(map(int, reindex_list))
+
+    reindex = list(map(Fraction, reindex_list))
     reindex_matrix = (
         reindex[0], reindex[3], reindex[6], 0,
         reindex[1], reindex[4], reindex[7], 0,

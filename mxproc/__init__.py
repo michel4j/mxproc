@@ -96,18 +96,20 @@ class Analysis(ABC):
         """
 
         self.args = args
-
+        self.experiments = ()
         # Prepare working directory
         directory = self.args.dir
-        if directory in ["", None]:
+        if directory in ["", None] and args.images:
             index = 1
             directory = Path(f"{self.prefix}-{index}")
             while directory.exists():
                 index += 1
                 directory = Path(f"{self.prefix}-{index}")
+            self.experiments = load_multiple(self.args.images)
+        elif directory is None:
+            directory = ""
         directory = Path(directory).absolute()
 
-        self.experiments = load_multiple(self.args.images)
         self.options = AnalysisOptions(
             directory=directory, extras=self.get_extras(self.args), **self.get_options(self.args)
         )
@@ -161,12 +163,16 @@ class Analysis(ABC):
         }
         return {key: value for key, value in options.items() if value}
 
-    def load(self, step: StepType):
+    def load(self, step: StepType | None = None):
         """
         Load an Analysis from a meta file and reset the state to it.
-        :param step: analysis step corresponding to the saved metadata
+        :param step: analysis step corresponding to the saved metadata reads the latest meta file if None
         """
-        meta_file = self.options.directory / f'{step.slug()}.meta'
+
+        realm = 'latest' if step is None else step.slug()
+
+        meta_file = self.options.directory / f'{realm}.meta'
+
         try:
             with gzip.open(meta_file, 'rb') as handle:  # gzip compressed yaml file
                 meta = yaml.load(handle, yaml.Loader)
@@ -198,6 +204,7 @@ class Analysis(ABC):
             'settings': self.settings
         }
         meta_file = self.options.directory / f'{step.slug()}.meta'
+        latest_file = self.options.directory / 'latest.meta'
 
         # backup file if needed
         if meta_file.exists() and backup:
@@ -205,6 +212,10 @@ class Analysis(ABC):
 
         with gzip.open(meta_file, 'wb') as handle:  # gzip compressed yaml file
             yaml.dump(meta, handle, encoding='utf-8')
+        try:
+            latest_file.unlink(missing_ok=True)
+        finally:
+            latest_file.hardlink_to(meta_file)
 
     def update_result(self, results: Dict[str, Result], step: StepType):
         """
@@ -258,14 +269,6 @@ class Analysis(ABC):
         exit_code = 0
         # If anything other than initialize, load the previous metadata and use that
         if step != StepType.INITIALIZE:
-            # Find bootstrap step based on active workflow
-            if bootstrap is None:
-                for prev_step, next_step in WORKFLOWS[self.workflow].items():
-                    if next_step == step:
-                        bootstrap = prev_step
-                        break
-                else:
-                    bootstrap = step.prev()
             self.load(bootstrap)
 
         start_time = time.time()
@@ -284,7 +287,7 @@ class Analysis(ABC):
                 logger.info_value(step.desc(), '', spacer='-')
                 results = step_method()
             except CommandFailed as err:
-                logger.error(f'Data Processing Failed at {step.name}: {err}. Aborting!')
+                logger.error(f'Failed at {step.name}: {err}. Aborting!')
                 exit_code = 1
                 break
             else:
