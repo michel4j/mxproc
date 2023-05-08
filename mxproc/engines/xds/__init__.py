@@ -167,7 +167,7 @@ class XDSAnalysis(Analysis):
             if directory != self.options.directory:
                 path_str = short_path(directory, self.options.directory.parent)
             else:
-                path_str = directory
+                path_str = str(directory)
             logger.info_value(f'{experiment.name}', path_str)
             results[experiment.identifier] = Result(state=StateType.SUCCESS, details={"directory": directory})
         return results

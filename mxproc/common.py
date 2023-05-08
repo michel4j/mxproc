@@ -417,7 +417,6 @@ def find_missing(series: Sequence[Tuple[int, int]]) -> Sequence[Tuple[int, int]]
     :return: Another sequence of tuples, for the above example, it would be [(11, 16), (17, 18), (19, 25)]
     """
 
-
     return [(a[1], b[0]) for a, b in pairwise(series)]
 
 
@@ -429,7 +428,4 @@ def short_path(path: Path | str, parent: Path | str = "") -> str:
 
     :return: string
     """
-
-    path = Path(path)
-    parent = Path(parent)
-    return str(path.relative_to(parent))
+    return os.path.relpath(path, parent)
