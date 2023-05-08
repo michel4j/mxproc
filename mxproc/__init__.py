@@ -215,7 +215,7 @@ class Analysis(ABC):
         try:
             latest_file.unlink(missing_ok=True)
         finally:
-            latest_file.hardlink_to(meta_file)
+            latest_file.symlink_to(meta_file)
 
     def update_result(self, results: Dict[str, Result], step: StepType):
         """
