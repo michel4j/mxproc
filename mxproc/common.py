@@ -419,3 +419,17 @@ def find_missing(series: Sequence[Tuple[int, int]]) -> Sequence[Tuple[int, int]]
 
 
     return [(a[1], b[0]) for a, b in pairwise(series)]
+
+
+def short_path(path: Path | str, parent: Path | str = "") -> str:
+    """
+    Generate a shortened path representation for the given path relative to the current working directory
+    :param path: path to shorten
+    :param parent: Parent path or current working directory
+
+    :return: string
+    """
+
+    path = Path(path)
+    parent = Path(parent)
+    return str(path.relative_to(parent))

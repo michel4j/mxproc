@@ -97,15 +97,19 @@ class Analysis(ABC):
 
         self.args = args
         self.experiments = ()
+
+        if args.images:
+            self.experiments = load_multiple(self.args.images)
+
         # Prepare working directory
         directory = self.args.dir
+
         if directory in ["", None] and args.images:
             index = 1
             directory = Path(f"{self.prefix}-{index}")
             while directory.exists():
                 index += 1
                 directory = Path(f"{self.prefix}-{index}")
-            self.experiments = load_multiple(self.args.images)
         elif directory is None:
             directory = ""
         directory = Path(directory).absolute()

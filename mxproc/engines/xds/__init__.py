@@ -15,7 +15,7 @@ import vg
 
 from mxproc import Analysis, reporting
 from mxproc.command import run_command, CommandFailed
-from mxproc.common import StateType, StepType, backup_files, show_warnings, find_lattice, find_missing
+from mxproc.common import StateType, StepType, backup_files, show_warnings, find_lattice, short_path
 from mxproc.common import generate_failure, Result, select_resolution, ScoreManager, summarize_ranges
 from mxproc.engines.xds import io, stats
 from mxproc.engines.xds.indexing import autoindex_trial
@@ -164,8 +164,10 @@ class XDSAnalysis(Analysis):
             }
             io_options.update(self.options.extras)
             io.create_input_file(('ALL',), experiment, io.XDSParameters(**io_options))
-            path_str = str(directory)
-            path_str = path_str.replace(os.path.expanduser('~'), '~', 1)
+            if directory != self.options.directory:
+                path_str = short_path(directory, self.options.directory.parent)
+            else:
+                path_str = directory
             logger.info_value(f'{experiment.name}', path_str)
             results[experiment.identifier] = Result(state=StateType.SUCCESS, details={"directory": directory})
         return results
@@ -832,7 +834,7 @@ class XDSAnalysis(Analysis):
                     'strategy': strategies[0],
                     'details': reporting.screening_report(self),
                 }
-                report_file = str(self.options.directory / "report.html").replace(os.path.expanduser('~'), '~', 1)
+                report_file = short_path(self.options.directory / "report.html", self.options.directory.parent)
                 logger.info(f'- HTML report: {report_file}')
                 reporting.save_report(report, self.options.directory)
             else:
@@ -852,7 +854,7 @@ class XDSAnalysis(Analysis):
                     'score': round(scaling.get('quality.summary.score'), 2),
                     'details': reporting.merging_details(self)
                 }
-                report_file = str(self.options.directory / "report.html").replace(os.path.expanduser('~'), '~', 1)
+                report_file = short_path(self.options.directory / "report.html", self.options.directory.parent)
                 logger.info(f'- HTML report: {report_file}')
                 reporting.save_report(report, self.options.directory)
             else:
@@ -868,7 +870,7 @@ class XDSAnalysis(Analysis):
                 for expt, scaling in scaled_expt:
                     work_dir = self.options.working_directories[expt.identifier]
                     os.chdir(work_dir)
-                    report_file = str(work_dir / "report.html").replace(os.path.expanduser('~'), '~', 1)
+                    report_file = short_path(work_dir / "report.html", self.options.directory.parent)
                     report = {
                         'title': f"{anom} Analysis of {expt.name}",
                         'kind': f'MX {anom} Analysis',
@@ -876,7 +878,7 @@ class XDSAnalysis(Analysis):
                         'details': reporting.single_details(self, expt)
                     }
                     logger.info(f'- HTML report: {report_file}')
-                    reporting.save_report(report, self.options.directory)
+                    reporting.save_report(report, work_dir)
             else:
                 raise CommandFailed('No successful results to report on!')
 
