@@ -104,7 +104,8 @@ def merging_details(analysis: Analysis):
 
     report_list = []
     for experiment in analysis.experiments:
-        report_list.extend(single_details(analysis, experiment))
+        if analysis.get_step_result(experiment, StepType.SCALE):
+            report_list.extend(single_details(analysis, experiment))
 
     return report_list
 
