@@ -98,28 +98,28 @@ class Analysis(ABC):
         self.args = args
         self.experiments = ()
 
-        if args.images:
-            self.experiments = load_multiple(self.args.images)
-
         # Prepare working directory
-        directory = self.args.dir
+        top_level = Path(self.args.dir)
 
-        if directory in ["", None] and args.images:
-            index = 1
-            directory = Path(f"{self.prefix}-{index}")
+        if not args.images:
+            directory = top_level
+        else:
+            self.experiments = load_multiple(self.args.images)
+            index = 0
+            prefix = self.prefix if not self.args.prefix else self.args.prefix
+
+            directory = top_level / f"{prefix}-{index}"
             while directory.exists():
                 index += 1
-                directory = Path(f"{self.prefix}-{index}")
-        elif directory is None:
-            directory = ""
+                directory = top_level / f"{prefix}-{index}"
+
         directory = Path(directory).absolute()
+        directory.mkdir(parents=True, exist_ok=True)
 
         self.options = AnalysisOptions(
             directory=directory, extras=self.get_extras(self.args), **self.get_options(self.args)
         )
 
-        if not directory.exists():
-            directory.mkdir(parents=True, exist_ok=True)
         log.log_to_file(str(directory / "auto.log"))
 
         self.results = {}
@@ -402,7 +402,8 @@ class Application:
         self.parser.add_argument('images', nargs='*', help='Datasets to process. One frame per dataset.')
         self.parser.add_argument('-s', '--screen', help='Characterization and Strategy', action="store_true")
         self.parser.add_argument('-a', '--anom', help="Friedel's law False", action="store_true")
-        self.parser.add_argument('-d', '--dir', type=str, help="Working Directory")
+        self.parser.add_argument('-d', '--dir', type=str, help="Top-Level Directory", default="")
+        self.parser.add_argument('-p', '--prefix', type=str, help="Working Directory Prefix")
         self.parser.add_argument('-m', '--multi', help='Separate datasets scaled together', action="store_true")
         self.parser.add_argument('-u', '--use', type=str, default='XDS', help="Backend Engine. XDS | DIALS.")
         self.parser.add_argument('-1', '--single', action='store_true', default=False, help="Stop after a single step")
