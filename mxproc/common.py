@@ -220,7 +220,7 @@ RESOLUTION_DESCRIPTION = {
 
 def select_resolution(
         table: List[dict],
-        method: ResolutionMethod = ResolutionMethod.CC_HALF,
+        method: ResolutionMethod = ResolutionMethod.SIGMA,
         manual: float | None = None
 ) -> Tuple[float, str]:
     """
@@ -252,9 +252,9 @@ def select_resolution(
         used_method = ResolutionMethod.EDGE
 
         if method == ResolutionMethod.SIGMA:
-            candidates = np.argwhere(data['i_sigma'] < 1.0).ravel()
+            candidates = np.argwhere(data['i_sigma'] >= 1.0).ravel()
             if len(candidates):
-                resolution = data['shell'][candidates[0]]
+                resolution = data['shell'][candidates[-1]]
                 used_method = method
         elif method == ResolutionMethod.CC_HALF:
             candidates = np.argwhere(data['significance'] == 0).ravel()

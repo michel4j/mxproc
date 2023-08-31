@@ -113,7 +113,7 @@ def create_input_file(jobs: Sequence[XDSJob], experiment: Experiment, parameters
         f"OSCILLATION_RANGE= {experiment.delta_angle:4.2f}\n"
         f"FRIEDEL'S_LAW= {friedel_flag}\n"
         f"NAME_TEMPLATE_OF_DATA_FRAMES={template_path} {parameters.format}\n"
-        f"DATA_RANGE=    {parameters.data_range[0][0]} {parameters.data_range[-1][1]}\n"
+        f"DATA_RANGE=    {parameters.data_range[0][0]} {parameters.data_range[-1][1]-1}\n"
     )
     for start, end in parameters.spot_range:
         dataset_text += f"SPOT_RANGE=    {start} {end}\n"
