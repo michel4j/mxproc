@@ -99,21 +99,19 @@ class Analysis(ABC):
         self.experiments = ()
 
         # Prepare working directory
-        top_level = Path(self.args.dir)
-
-        if not args.images:
-            directory = top_level
-        else:
+        directory = Path(self.args.dir)
+        if args.images:
+            top_level = directory
+            if not self.args.dir:
+                index = 0
+                directory = top_level / f"{self.prefix}-{index}"
+                while directory.exists():
+                    index += 1
+                    directory = top_level / f"{self.prefix}-{index}"
             self.experiments = load_multiple(self.args.images)
-            index = 0
-            prefix = self.prefix if not self.args.prefix else self.args.prefix
-
-            directory = top_level / f"{prefix}-{index}"
-            while directory.exists():
-                index += 1
-                directory = top_level / f"{prefix}-{index}"
-
-        directory = Path(directory).absolute()
+        else:
+            logger.info_value('Resuming', str(directory))
+        directory = directory.absolute()
         directory.mkdir(parents=True, exist_ok=True)
 
         self.options = AnalysisOptions(
@@ -402,8 +400,7 @@ class Application:
         self.parser.add_argument('images', nargs='*', help='Datasets to process. One frame per dataset.')
         self.parser.add_argument('-s', '--screen', help='Characterization and Strategy', action="store_true")
         self.parser.add_argument('-a', '--anom', help="Friedel's law False", action="store_true")
-        self.parser.add_argument('-d', '--dir', type=str, help="Top-Level Directory", default="")
-        self.parser.add_argument('-p', '--prefix', type=str, help="Working Directory Prefix")
+        self.parser.add_argument('-d', '--dir', type=str, help="Working Directory", default="")
         self.parser.add_argument('-m', '--multi', help='Separate datasets scaled together', action="store_true")
         self.parser.add_argument('-u', '--use', type=str, default='XDS', help="Backend Engine. XDS | DIALS.")
         self.parser.add_argument('-1', '--single', action='store_true', default=False, help="Stop after a single step")
