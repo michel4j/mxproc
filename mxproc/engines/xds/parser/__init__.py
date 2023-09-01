@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any, Tuple
 from mxproc.common import TextParser, StateType, MissingLexicon, FilesMissing, Flag, Result
 from mxproc.log import logger
-from mxproc.xtal import lattice_point_groups, Lattice
+from mxproc.xtal import lattice_point_groups, Lattice, POINT_GROUPS
 
 
 DATA_PATH = Path(__file__).parent / "data"
@@ -156,6 +156,11 @@ class XDSParser(TextParser):
             details['index_origins'] = log_details.get('index_origins', [])
             details['lattices'] = log_details.get('lattices', [])
             details['point_groups'] = lattice_point_groups(*[lattice['character'] for lattice in details['lattices']])
+
+            best_lattice = details['lattices'][-1]
+            best_spacegroup = POINT_GROUPS[best_lattice['character']][-1]
+
+            details['symmetry_lattice'] = Lattice(best_spacegroup, *best_lattice['unit_cell'])
             details['quality'] = log_details.get('quality', {})
 
             # spots distribution

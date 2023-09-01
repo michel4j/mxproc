@@ -160,7 +160,7 @@ def create_input_file(jobs: Sequence[XDSJob], experiment: Experiment, parameters
         f"STRONG_PIXEL= {parameters.strong_sigma:0.1f} ! NOTE: SPOT.XDS managed externally \n"
         "TRUSTED_REGION=0.00 1.2\n"
         f"TEST_RESOLUTION_RANGE= 50.0 {max(1.0, parameters.resolution_limit):0.2f}\n"
-        "TOTAL_SPINDLE_ROTATION_RANGES= 90 180 30\n"
+        "TOTAL_SPINDLE_ROTATION_RANGES= 30 180 30\n"
         "STARTING_ANGLES_OF_SPINDLE_ROTATION= 0 180 15\n"
         "VALUE_RANGE_FOR_TRUSTED_DETECTOR_PIXELS= 6000 30000\n"
         f"INCLUDE_RESOLUTION_RANGE=50.0 {parameters.resolution_limit:0.2f}\n"

@@ -229,10 +229,13 @@ class XDSAnalysis(Analysis):
             if result.get('point_groups'):
                 point_groups = ", ".join(result.get('point_groups'))
                 lattice = result.get('lattice', Lattice())
+                sym_lattice = result.get('symmetry_lattice', Lattice())
                 logger.info_value('- Reduced Cell', lattice.cell_text())
                 logger.info_value('- Compatible Point Groups', point_groups)
-                logger.info_value('- Unit-cell Volume', f"{lattice.volume():0.1f} Å³")
-                logger.info_value('- Estimated Unit Cell Content', f"{lattice.estimate_content()} Residues")
+                logger.info_value('- Apparent Symmetry', sym_lattice.name)
+                logger.info_value('- Apparent Unit Cell', sym_lattice.cell_text())
+                logger.info_value('- Unit-cell Volume', f"{sym_lattice.volume():0.1f} Å³")
+                logger.info_value('- Estimated Unit Cell Content', f"{sym_lattice.estimate_content()} Residues")
 
             results[experiment.identifier] = result
             if result.state in [StateType.WARNING, StateType.FAILURE]:
@@ -245,12 +248,13 @@ class XDSAnalysis(Analysis):
         for experiment in self.experiments:
             os.chdir(self.options.working_directories[experiment.identifier])
             index_result = self.get_step_result(experiment, StepType.INDEX)
-            lattice = index_result.get('lattice')
+            lattice = index_result.get('symmetry_lattice')
 
             io_options = {
                 'data_range': experiment.frames,
                 'spot_range': experiment.frames,
-                'anomalous': self.options.anomalous, 'lattice': lattice,
+                'anomalous': self.options.anomalous,
+                'lattice': lattice,
                 'beam_center': experiment.detector_origin,
                 'min_fraction': 0.10
             }
@@ -293,10 +297,17 @@ class XDSAnalysis(Analysis):
                 has_long_axis = ((axis_ratios <= 0.5).sum() == 2)  # two other axis are less than 50% length of longest
                 long_axis_ratio = 0.0
 
+                warnings = []
                 if longest_axis != axis_near_spindle and has_long_axis:
                     logger.warning_value(
                         "- Long Unit-cell axis is closest to beam axis!",
                         f'{longest_axis["name"]}={longest_axis["length"]:0.1f}Å, {longest_axis["beam"]:0.1f}°'
+                    )
+                    warnings.append(
+                       f"A long unit cell axis ({longest_axis['name']}={longest_axis['length']:0.1f} Å) "
+                       f"is not optimally oriented relative to the rotation axis. It is {longest_axis['beam']:0.1f}° "
+                       f"from the beam direction! To avoid overlaps, the longest axis should be close to the "
+                       f"rotation axis."
                     )
                     long_axis_ratio = longest_axis['beam'] / max(longest_axis['spindle'], 1)
                 else:
@@ -357,6 +368,7 @@ class XDSAnalysis(Analysis):
                         'resolution': resolution_details['observed_resolution'],
                         'long_axis': long_axis_ratio,
                         'score': score,
+                        'warnings': warnings
                     },
                     'dose': dose_info
                 })

@@ -38,6 +38,34 @@ def screening_summary(analysis: Analysis, experiment: Experiment) -> dict:
         return {}
     else:
         lattice = indexing.get("lattice", Lattice())
+        sym_lattice = indexing.get("symmetry_lattice", Lattice())
+        warnings = strategy.get('quality.warnings', [])
+        warning_text = ""
+        if warnings:
+            warning_list = '\n'.join([
+                f' - {warn}\n' for i, warn in enumerate(strategy.get('quality.warnings', []))
+            ])
+            warning_text = f"""
+            ---
+            **⚠️ WARNINGS ⚠️**
+                
+            {warning_list}
+            """
+        notes = inspect.cleandoc(
+            f"""
+            1. Data Quality Score for comparing similar data sets. Typically, values >
+               0.8 are excellent, > 0.6 are good, > 0.5 are acceptable, > 0.4
+               marginal, and &lt; 0.4 are Barely usable. Not comparable to full dataset scores.
+            2. Strategy is calculated for the highest apparent symmetry which is unreliable for incomplete data.
+            3. This is the Resolution within which 99% of observed diffraction spots occur.
+            4. This is the expected completeness and multiplicity for a triclinic crystal. If your crystal
+               has a higher symmetry, the observed completeness, and multiplicity for the final 
+               dataset will be much higher.  
+            
+            {warning_text}
+            """
+        )
+
         return {
             'title': 'Data Quality Statistics',
             'kind': 'table',
@@ -45,7 +73,9 @@ def screening_summary(analysis: Analysis, experiment: Experiment) -> dict:
                 ['Score¹', f'{strategy.get("quality.score"):0.2f}'],
                 ['Wavelength', f'{experiment.wavelength:0.5g} Å'],
                 ['Compatible Point Groups', ", ".join(indexing.get('point_groups'))],
-                ['Reduced Cell²', f'{lattice.cell_text()}'],
+                ['Reduced Cell', f'{lattice.cell_text()}'],
+                ['Apparent Point Group²', f'{sym_lattice.name}'],
+                ['Apparent Cell²', f'{sym_lattice.cell_text()}'],
                 ['Mosaicity', f'{strategy.get("quality.mosaicity"):0.2f}°'],
                 ['Diffraction Resolution³', f'{strategy.get("quality.resolution"):0.1f} Å'],
                 ['Profile Error (position)', f'{indexing.get("quality.pixel_error")} px'],
@@ -56,17 +86,7 @@ def screening_summary(analysis: Analysis, experiment: Experiment) -> dict:
                 ['Expected Multiplicity⁴', f'{strategy.get("strategy.multiplicity"):0.2f}'],
             ],
             'header': 'column',
-            'notes': inspect.cleandoc("""
-                1. Data Quality Score for comparing similar data sets. Typically, values >
-                   0.8 are excellent, > 0.6 are good, > 0.5 are acceptable, > 0.4
-                   marginal, and &lt; 0.4 are Barely usable. Not comparable to full dataset scores.
-                2. Strategy is calculated for the triclinic Reduced Cell which represents the worst case
-                   scenario.
-                3. This is the Resolution within which 99% of observed diffraction spots occur.
-                4. This is the expected completeness and multiplicity for a triclinic crystal. If your crystal
-                   has a higher symmetry, the observed completeness, and multiplicity for the final 
-                   dataset will be much higher. 
-            """)
+            'notes': notes
         }
 
 
@@ -125,7 +145,9 @@ def screening_completeness(strategy):
             ],
             'y1-label': 'Completeness (%)'
         },
-        'notes': "The above plot was calculated by XDS. See W. Kabsch, Acta Cryst. (2010). D66, 125-132."
+        'notes': "The above plot was calculated by XDS. See W. Kabsch, Acta Cryst. (2010). D66, 125-132.  The plot"
+                 " assumes the highest symmetry point group is the correct lattice. However, this may be false, as"
+                 " a full dataset is required to accurately determine the correct symmetry."
     }
 
 
