@@ -187,7 +187,7 @@ def load_experiment(filename: Union[str, Path]) -> Sequence[Experiment]:
     if dset.index != dset.series[0]:
         dset.get_frame(index=dset.series[0])  # set to first frame so we get proper start angle
 
-    if dset.frame.format in ["HDF5", "NXmx", "CBF"]:
+    if dset.frame.format in ["HDF5", "NXmx"]:
         wildcard = dset.reference
         angles = numpy.array([
             (index, dset.frame.start_angle + (index - 1) * dset.frame.delta_angle)
@@ -195,10 +195,14 @@ def load_experiment(filename: Union[str, Path]) -> Sequence[Experiment]:
         ])
     else:
         wildcard = dset.glob
+        # angles = numpy.array([
+        #     (index, frame.start_angle)
+        #     for index in dset.series
+        #     for frame in (dset.get_frame(index),)
+        # ])
         angles = numpy.array([
-            (index, frame.start_angle)
+            (index, dset.frame.start_angle + (index - 1) * dset.frame.delta_angle)
             for index in dset.series
-            for frame in (dset.get_frame(index),)
         ])
 
     diffs = numpy.abs(numpy.diff(angles, axis=0))

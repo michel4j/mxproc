@@ -711,8 +711,12 @@ class XDSAnalysis(Analysis):
             run_command('xdsconv', f'- Exporting SHELX reflection file "{prefix}-shelx.hkl"')
 
             # MTZ
-            command = f'phenix.reflection_file_converter {scaled_input} --generate_r_free_flags  --mtz={prefix}.mtz'
-            run_command(command, f'- Exporting MTZ reflection file "{prefix}.mtz"')
+            command = f'phenix.reflection_file_converter  {scaled_input} --write_unmerged --mtz={prefix}.mtz'
+            run_command(command, f'- Exporting Unmerged MTZ reflection file "{prefix}-unmerged.mtz"')
+
+            # Unmerged MTZ
+            command = f'phenix.reflection_file_converter  {scaled_input} --generate_r_free_flags --mtz={prefix}.mtz'
+            run_command(command, f'- Exporting Unmerged MTZ reflection file "{prefix}.mtz"')
 
     @staticmethod
     def show_quality(info: dict):
