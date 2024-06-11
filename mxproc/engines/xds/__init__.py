@@ -146,6 +146,10 @@ class XDSAnalysis(Analysis):
         if args.spacegroup:
             extras.update(lattice=Lattice(spacegroup=args.spacegroup))
 
+        if args.cluster:
+            num_nodes, num_cores = args.cluster
+            extras.update(num_nodes=num_nodes, num_cores=num_cores)
+
         return extras
 
     def initialize(self, **kwargs):
@@ -343,7 +347,7 @@ class XDSAnalysis(Analysis):
                     indexed_fraction=resolution_details['indexed_fraction'],
                 )
 
-                # run raddose and estiamte exposure time, assumes crystal is the same size as the beam
+                # run raddose and estimate exposure time, assumes crystal is the same size as the beam
                 # uses beam shape and flux from beamline passed in as options.
                 beam = self.options.get_beam()
                 beam.wavelength = experiment.wavelength
@@ -699,7 +703,8 @@ class XDSAnalysis(Analysis):
     def export(self, **kwargs):
         for scaled_input, names in self.settings.get('outputs', {}).items():
             # get common name and strip special characters from ending.
-            prefix = re.sub("[-_+]$", '', os.path.commonprefix(names)) or "final"
+            common_name = re.sub(r"[-_+]$", '', os.path.commonprefix(names))
+            prefix = common_name or "final"
 
             # SHELX
             io.write_xdsconv_input({

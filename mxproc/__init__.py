@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import gzip
 import os
+import re
 import time
 import importlib
 import logging
@@ -246,13 +247,11 @@ class Analysis(ABC):
             return self.results[expt.identifier][step.name]
 
     @abstractmethod
-    def score(self, expt: Experiment) -> float:
+    def score(self, *args, **kwargs) -> float:
         """
         Calculate and return a data quality score for the specified experiment
-
-        :param expt: experiment
-        :return: float
         """
+        ...
 
     def run(
             self,
@@ -421,6 +420,14 @@ class Application:
         self.parser.add_argument('--beam-size', type=float, help="Beam aperture size")
         self.parser.add_argument('--beam-fwhm', type=float, nargs=2, help="Beam FWHM")
         self.step = step
+
+        # cluster arguments
+        def valid_cluster(value, pattern=re.compile(r'^\d+,\d+$')):
+            if not pattern.match(value):
+                raise argparse.ArgumentTypeError('Cluster format should be "nodes:cores"')
+            return tuple(map(int, value.split(',')))
+
+        self.parser.add_argument('--cluster', type=valid_cluster, help='Number of nodes and cores per node to use for processing')
 
     @staticmethod
     def get_engine(args: argparse.Namespace) -> Analysis:
