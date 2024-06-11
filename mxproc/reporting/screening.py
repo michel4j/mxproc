@@ -102,17 +102,17 @@ def screening_strategy(strategy):
             ['Maximum Delta Angle¹', f'{strategy.get("strategy.max_delta"):0.2f}°'],
             ['Minimum Total Angle Range²', f'{strategy.get("strategy.total_angle"):0.2f}°'],
             ['Exposure Rate Avg Dose³', (
-                f'{strategy.get("strategy.exposure_rate"):0.1f}°/s | '
-                f'0.2°/{0.2 / strategy.get("strategy.exposure_rate"):0.1f} s | '
-                f'0.1°/{0.1 / strategy.get("strategy.exposure_rate"):0.1f} s '
+                f'{strategy.get("strategy.exposure_rate"):0.2g}°/s | '
+                f'0.2°/{0.2 / strategy.get("strategy.exposure_rate"):0.2g} s | '
+                f'0.1°/{0.1 / strategy.get("strategy.exposure_rate"):0.2g} s '
             )],
             ['Exposure Rate Low Dose³', (
-                f'{strategy.get("strategy.exposure_rate_worst"):0.1f}°/s | '
-                f'0.2°/{0.2 / strategy.get("strategy.exposure_rate_worst"):0.1f} s | '
-                f'0.1°/{0.1 / strategy.get("strategy.exposure_rate_worst"):0.1f} s '
+                f'{strategy.get("strategy.exposure_rate_worst"):0.2g}°/s | '
+                f'0.2°/{0.2 / strategy.get("strategy.exposure_rate_worst"):0.2g} s | '
+                f'0.1°/{0.1 / strategy.get("strategy.exposure_rate_worst"):0.2g} s '
             )],
-            ['Total Exposure Time', f'{strategy.get("strategy.total_exposure"):0.0f} s'],
-            ['Total Worst Case Exposure Time', f'{strategy.get("strategy.total_exposure_worst"):0.0f} s'],
+            ['Total Exposure Time', f'{strategy.get("strategy.total_exposure"):0.2g} s'],
+            ['Total Worst Case Exposure Time', f'{strategy.get("strategy.total_exposure_worst"):0.2g} s'],
         ],
         'notes': inspect.cleandoc("""
             1. This is the maximum delta-angle to be collected in order to avoid overlaps. Note that
