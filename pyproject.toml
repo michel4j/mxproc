@@ -44,6 +44,7 @@ Homepage = "https://github.com/michel4j/mxproc"
 [tool.setuptools]
 script-files = [
     'bin/auto.init',
+    'bin/auto.xds',
     'bin/auto.index',
     'bin/auto.spots',
     'bin/auto.integrate',
