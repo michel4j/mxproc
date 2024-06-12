@@ -147,8 +147,8 @@ class XDSAnalysis(Analysis):
             extras.update(lattice=Lattice(spacegroup=args.spacegroup))
 
         if args.cluster:
-            num_nodes, num_cores = args.cluster
-            extras.update(num_nodes=num_nodes, num_cores=num_cores)
+            slurm_user, num_nodes, num_cores = args.cluster
+            extras.update(num_nodes=num_nodes, num_cores=num_cores, slurm_user=slurm_user)
 
         return extras
 
@@ -185,11 +185,16 @@ class XDSAnalysis(Analysis):
             }
             io_options.update(self.options.extras)
             os.chdir(self.options.working_directories[experiment.identifier])
-            io.create_input_file(('XYCORR', 'INIT', 'COLSPOT'), experiment, io.XDSParameters(**io_options))
+            job = io.create_input_file(('XYCORR', 'INIT', 'COLSPOT'), experiment, io.XDSParameters(**io_options))
             image_range = summarize_ranges(io_options['spot_range'])
 
+            if job.user and job.nodes and job.cpus and job.tasks:
+                command = f'auto.xds xds_par --nodes={job.nodes} --cpus={job.cpus} --tasks={job.tasks} --user={job.user}'
+            else:
+                command = f'auto.xds xds_par'
+
             try:
-                run_command('xds_par', desc=f'{experiment.name}: Finding strong spots in images {image_range}')
+                run_command(command, desc=f'{experiment.name}: Finding strong spots in images {image_range}')
                 result = Result(state=StateType.SUCCESS, details=XDSParser.parse('COLSPOT.LP'))
                 io.save_spots()
                 backup_files('SPOT.XDS')
@@ -413,10 +418,15 @@ class XDSAnalysis(Analysis):
                     divergence_esd=previous_integration.get('parameters.divergence_esd'),
                 )
 
-            io.create_input_file(('DEFPIX', 'INTEGRATE', 'CORRECT',), experiment, io.XDSParameters(**io_options))
+            job = io.create_input_file(('DEFPIX', 'INTEGRATE', 'CORRECT',), experiment, io.XDSParameters(**io_options))
+            if job.user and job.nodes and job.cpus and job.tasks:
+                command = f'auto.xds xds_par --nodes={job.nodes} --cpus={job.cpus} --tasks={job.tasks} --user={job.user}'
+            else:
+                command = f'auto.xds xds_par'
+
             try:
                 run_command(
-                    'xds_par', desc=f'- Integrating frames {range_text}', check_files=['INTEGRATE.LP', 'CORRECT.LP']
+                    command, desc=f'- Integrating frames {range_text}', check_files=['INTEGRATE.LP', 'CORRECT.LP']
                 )
                 integration = XDSParser.parse('INTEGRATE.LP')
                 correction = XDSParser.parse('CORRECT.LP')

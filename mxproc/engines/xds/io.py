@@ -18,6 +18,14 @@ XDSRefinement = Literal["CELL", "BEAM", "ORIENTATION", "AXIS",  "DISTANCE", "POS
 
 
 @dataclass
+class JobParameters:
+    nodes: int | None = None
+    cpus: int | None = None
+    user: str | None = None
+    tasks: int | None = None
+
+
+@dataclass
 class XDSParameters:
     data_range: Sequence[Tuple[int, int]]
     spot_range: Sequence[Tuple[int, int]]
@@ -54,9 +62,10 @@ class XDSParameters:
 
     num_nodes: int | None = None
     num_cores: int | None = None
+    slurm_user: str | None = None
 
 
-def create_input_file(jobs: Sequence[XDSJob], experiment: Experiment, parameters: XDSParameters):
+def create_input_file(jobs: Sequence[XDSJob], experiment: Experiment, parameters: XDSParameters) -> JobParameters:
     """
     Create an XDS.INP input file
 
@@ -73,6 +82,12 @@ def create_input_file(jobs: Sequence[XDSJob], experiment: Experiment, parameters
     max_pixel_error: float = 3.0
     spot_size_pixels: float = 6.0
     spot_gap_pixels: float = 7.0
+
+    job_pars = {
+        'nodes': parameters.num_nodes,
+        'cpus': parameters.num_cores,
+        'user': parameters.slurm_user,
+    }
 
     if 'ADSC' in detector_name:
         detector_type = 'ADSC'
@@ -115,9 +130,11 @@ def create_input_file(jobs: Sequence[XDSJob], experiment: Experiment, parameters
         max_jobs = parameters.num_nodes * parameters.num_cores // max_cpu
         delphi = max_cpu * experiment.delta_angle
 
-        job_text += f" MAXIMUM_NUMBER_OF_JOBS={max_jobs}\n"
-        job_text += f" MAXIMUM_NUMBER_OF_PROCESSORS={max_cpu}\n"
-        job_text += f" DELPHI={delphi:0.2f}\n"
+        job_text += f"MAXIMUM_NUMBER_OF_JOBS={max_jobs}\n"
+        job_text += f"MAXIMUM_NUMBER_OF_PROCESSORS={max_cpu}\n"
+        job_text += f"DELPHI={delphi:0.2f}\n"
+
+        job_pars.update(cpus=max_cpu, tasks=max_jobs)
 
     dataset_text = (
         f"!------------------- Dataset parameters\n"
@@ -235,6 +252,8 @@ def create_input_file(jobs: Sequence[XDSJob], experiment: Experiment, parameters
         outfile.write(beamline_text)
         outfile.write(extra_text)
 
+    return JobParameters(**job_pars)
+
 
 def save_spots():
     """
@@ -286,7 +305,7 @@ def filter_spots(
     numpy.savetxt("SPOT.XDS", spots[selected, :], fmt=SPOT_COLUMN_FORMATS[num_columns])
 
 
-def write_xscale_input(params: Sequence[dict]):
+def write_xscale_input(params: Sequence[dict]) -> JobParameters:
     """
     Generate an XSCALE.INP input file from a parameter list
     :param params: sequence of dictionaries, one for each scaled output file
@@ -338,8 +357,10 @@ def write_xscale_input(params: Sequence[dict]):
     with open('XSCALE.INP', 'w') as outfile:
         outfile.write(file_text)
 
+    return JobParameters()
 
-def write_xdsconv_input(params: dict):
+
+def write_xdsconv_input(params: dict) -> JobParameters:
     """
     Write an XDSCONV.INP file for converting reflections
     :param params: parameters in a dictionary
@@ -372,3 +393,5 @@ def write_xdsconv_input(params: dict):
 
     with open('XDSCONV.INP', 'w') as outfile:
         outfile.write(file_text)
+
+    return JobParameters()

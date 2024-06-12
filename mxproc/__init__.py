@@ -422,12 +422,13 @@ class Application:
         self.step = step
 
         # cluster arguments
-        def valid_cluster(value, pattern=re.compile(r'^\d+,\d+$')):
+        def valid_cluster(value, pattern=re.compile(r'[^,]+,\d+,\d+$')):
             if not pattern.match(value):
                 raise argparse.ArgumentTypeError('Cluster format should be "nodes:cores"')
-            return tuple(map(int, value.split(',')))
+            parts = value.split(',')
+            return parts[0], int(parts[1]), int(parts[2])
 
-        self.parser.add_argument('--cluster', type=valid_cluster, help='Number of nodes and cores per node to use for processing')
+        self.parser.add_argument('--cluster', type=valid_cluster, help='Cluster parameters: user@hostname,nodes,cpus')
 
     @staticmethod
     def get_engine(args: argparse.Namespace) -> Analysis:
