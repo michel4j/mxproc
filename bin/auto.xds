@@ -94,10 +94,18 @@ if __name__ == "__main__":
     parser.add_argument("--cpus", type=int, help="Number of CPUs per task")
     parser.add_argument("--tasks", type=int, help="Total Number of tasks per node")
     parser.add_argument("--user", type=str, help="Slurm SSH User eg username@hostname")
+    parser.add_argument("--partition", type=str, default='batch', help="Slurm partition")
 
     args = parser.parse_args()
     if args.nodes and args.cpus and args.tasks and args.user:
-        run_slurm_job(args.command, args.nodes, args.cpus, args.tasks, args.user)
+        run_slurm_job(
+            args.command,
+            nodes=args.nodes,
+            cpus=args.cpus,
+            tasks=args.tasks,
+            user=args.user,
+            partition=args.partition
+        )
     else:
         run_standard_job(args.command)
 

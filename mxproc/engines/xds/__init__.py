@@ -146,10 +146,7 @@ class XDSAnalysis(Analysis):
         if args.spacegroup:
             extras.update(lattice=Lattice(spacegroup=args.spacegroup))
 
-        if args.cluster:
-            slurm_user, num_nodes, num_cores = args.cluster
-            extras.update(num_nodes=num_nodes, num_cores=num_cores, slurm_user=slurm_user)
-
+        extras.update(cluster=args.cluster)
         return extras
 
     def initialize(self, **kwargs):
@@ -189,7 +186,14 @@ class XDSAnalysis(Analysis):
             image_range = summarize_ranges(io_options['spot_range'])
 
             if job.user and job.nodes and job.cpus and job.tasks:
-                command = f'auto.xds xds_par --nodes={job.nodes} --cpus={job.cpus} --tasks={job.tasks} --user={job.user}'
+                command = (
+                    f'auto.xds xds_par '
+                    f'--nodes={job.nodes} '
+                    f'--cpus={job.cpus} '
+                    f'--tasks={job.tasks} '
+                    f'--user={job.user} '
+                    f'--partition={job.partition} '
+                )
             else:
                 command = f'auto.xds xds_par'
 
@@ -420,7 +424,14 @@ class XDSAnalysis(Analysis):
 
             job = io.create_input_file(('DEFPIX', 'INTEGRATE', 'CORRECT',), experiment, io.XDSParameters(**io_options))
             if job.user and job.nodes and job.cpus and job.tasks:
-                command = f'auto.xds xds_par --nodes={job.nodes} --cpus={job.cpus} --tasks={job.tasks} --user={job.user}'
+                command = (
+                    f'auto.xds xds_par '
+                    f'--nodes={job.nodes} '
+                    f'--cpus={job.cpus} '
+                    f'--tasks={job.tasks} '
+                    f'--user={job.user} '
+                    f'--partition={job.partition} '
+                )
             else:
                 command = f'auto.xds xds_par'
 
