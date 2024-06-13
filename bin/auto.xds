@@ -86,7 +86,7 @@ def run_standard_job(command: str):
 if __name__ == "__main__":
     # Set up command line arguments
     parser = argparse.ArgumentParser(description="Generate and submit a SLURM job script.")
-    parser.add_argument("command", type=str, default="xds_par", help="Command to run")
+    parser.add_argument("command", nargs='?', type=str, default="xds_par", help="Command to run")
     parser.add_argument("--nodes", type=int, help="Number of nodes")
     parser.add_argument("--cpus", type=int, help="Number of CPUs per task")
     parser.add_argument("--tasks", type=int, help="Total Number of tasks per node")
