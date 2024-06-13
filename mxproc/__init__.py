@@ -79,6 +79,15 @@ class AnalysisOptions:
             setattr(self, key, value)
 
 
+# cluster arguments
+def valid_cluster(value):
+    pattern = re.compile(r'(?P<partition>\w+):(?P<host>[^,]+),(?P<nodes>\d+),(?P<cpus>\d+)$')
+    m = pattern.match(value)
+    if not m:
+        raise argparse.ArgumentTypeError(f'Cluster format was `{value}` should be "partition:host,nodes,cores"')
+    return m.groupdict()
+
+
 class Analysis(ABC):
     experiments: Sequence[Experiment]
     options: AnalysisOptions
@@ -420,14 +429,6 @@ class Application:
         self.parser.add_argument('--beam-size', type=float, help="Beam aperture size")
         self.parser.add_argument('--beam-fwhm', type=float, nargs=2, help="Beam FWHM")
         self.step = step
-
-        # cluster arguments
-        def valid_cluster(value):
-            pattern = re.compile(r'(?P<partition> \w):(?P<host>[^,]+),(?P<nodes>\d+),(?P<cpus>\d+)$')
-            m = pattern.match(value)
-            if not m:
-                raise argparse.ArgumentTypeError('Cluster format should be "nodes:cores"')
-            return m.groupdict()
 
         self.parser.add_argument('--cluster', type=valid_cluster, help='Cluster parameters: partition:user@hostname,nodes,cpus')
 
