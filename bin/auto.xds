@@ -8,7 +8,7 @@ import re
 from pathlib import Path
 
 
-def tail(file_path: Path, sentinel="XDS-DONE", interval=0.1):
+def tail(file_path: Path, sentinel="COMMAND-DONE", interval=0.1):
     """
     Generator function that tails a file and yields new lines as they are added.
 
@@ -31,10 +31,11 @@ def tail(file_path: Path, sentinel="XDS-DONE", interval=0.1):
             yield text
 
 
-def run_slurm_job(nodes: int, cpus: int, tasks: int, host: str, partition: str = 'batch', duration: str = '00:30:00'):
+def run_slurm_job(command: str, nodes: int, cpus: int, tasks: int, host: str, partition: str = 'batch', duration: str = '00:30:00'):
     """
     Submit a SLURM job script to the cluster.
 
+    :param command: command to run
     :param nodes: Number of nodes
     :param cpus: Number of CPUs per task
     :param tasks: Total Number of tasks per node
@@ -55,9 +56,9 @@ def run_slurm_job(nodes: int, cpus: int, tasks: int, host: str, partition: str =
         "#SBATCH --mem=0                            # use all memory\n"
         f"#SBATCH --time={duration}\n"
         f"#SBATCH --output={log_file}\n\n"
-        f"# run xds_par \n"
-        f"xds_par\n"
-        "echo 'XDS-DONE'\n\n"
+        f"# run {command} \n"
+        f"{command}\n"
+        "echo 'COMMAND-DONE'\n\n"
     )
 
     # Write the job script to a file
@@ -75,16 +76,17 @@ def run_slurm_job(nodes: int, cpus: int, tasks: int, host: str, partition: str =
         print(line, end="")
 
 
-def run_standard_job():
+def run_standard_job(command: str):
     """
     Run a command on the local machine.
     """
-    subprocess.run("xds_par", shell=True)
+    subprocess.run(command, shell=True)
 
 
 if __name__ == "__main__":
     # Set up command line arguments
     parser = argparse.ArgumentParser(description="Generate and submit a SLURM job script.")
+    parser.add_argument("command", type=str, default="xds_par", help="Command to run")
     parser.add_argument("--nodes", type=int, help="Number of nodes")
     parser.add_argument("--cpus", type=int, help="Number of CPUs per task")
     parser.add_argument("--tasks", type=int, help="Total Number of tasks per node")
@@ -94,6 +96,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
     if args.nodes and args.cpus and args.tasks and args.host:
         run_slurm_job(
+            args.command,
             nodes=args.nodes,
             cpus=args.cpus,
             tasks=args.tasks,
@@ -101,5 +104,5 @@ if __name__ == "__main__":
             partition=args.partition
         )
     else:
-        run_standard_job()
+        run_standard_job(args.command)
 

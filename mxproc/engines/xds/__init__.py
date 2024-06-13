@@ -4,7 +4,7 @@ import argparse
 import os
 import re
 import shutil
-
+from multiprocessing import cpu_count
 from collections import defaultdict
 from pathlib import Path
 from typing import Sequence, Tuple
@@ -145,8 +145,18 @@ class XDSAnalysis(Analysis):
 
         if args.spacegroup:
             extras.update(lattice=Lattice(spacegroup=args.spacegroup))
-
-        extras.update(cluster=args.cluster)
+        if args.cluster:
+            extras.update(cluster={'mode': "SLURM", **args.cluster})
+        elif os.environ.get("CLUSTER_NODES"):
+            node_list = os.environ.get("CLUSTER_NODES", "").split()
+            node_cores = int(os.environ.get("CLUSTER_CORES", cpu_count()))
+            extras.update(cluster={
+                'mode': "SSH",
+                'nodes': len(node_list),
+                'cpus': node_cores,
+            })
+        else:
+            extras["cluster"] = {}
         return extras
 
     def initialize(self, **kwargs):
@@ -185,7 +195,7 @@ class XDSAnalysis(Analysis):
             job = io.create_input_file(('XYCORR', 'INIT', 'COLSPOT'), experiment, io.XDSParameters(**io_options))
             image_range = summarize_ranges(io_options['spot_range'])
 
-            if job.host and job.nodes and job.cpus and job.tasks:
+            if job.mode == 'SLURM':
                 command = (
                     f'auto.xds '
                     f'--nodes={job.nodes} '
@@ -274,7 +284,7 @@ class XDSAnalysis(Analysis):
             io_options.update(**self.options.extras)
             io.filter_spots()
             job = io.create_input_file(('IDXREF', 'DEFPIX', 'XPLAN'), experiment, io.XDSParameters(**io_options))
-            if job.host and job.nodes and job.cpus and job.tasks:
+            if job.mode == 'SLURM':
                 command = (
                     f'auto.xds '
                     f'--nodes=1 '
@@ -433,7 +443,7 @@ class XDSAnalysis(Analysis):
                 )
 
             job = io.create_input_file(('DEFPIX', 'INTEGRATE', 'CORRECT',), experiment, io.XDSParameters(**io_options))
-            if job.host and job.nodes and job.cpus and job.tasks:
+            if job.mode == 'SLURM':
                 command = (
                     f'auto.xds '
                     f'--nodes={job.nodes} '
@@ -546,12 +556,12 @@ class XDSAnalysis(Analysis):
                 io_options.update(lattice=reindex_lattice, reindex=reindex_matrix)
                 job = io.create_input_file(('CORRECT',), experiment, io.XDSParameters(**io_options))
 
-                if job.host and job.nodes and job.cpus and job.tasks:
+                if job.mode == 'SLURM':
                     command = (
                         f'auto.xds '
                         '--nodes=1 '
                         '--tasks=1 '
-                        f'--cpus={job.cpus * job.nodes // job.tasks} '
+                        f'--cpus={job.cpus * job.tasks // job.nodes} '
                         f'--host={job.host} '
                         f'--partition={job.partition} '
                     )
@@ -655,8 +665,20 @@ class XDSAnalysis(Analysis):
                 })
 
         try:
-            io.write_xscale_input(scale_configs)
-            run_command('xscale_par', f'- Scaling {len(scalable_experiments)} dataset(s) for {method}')
+            job = io.write_xscale_input(scale_configs, **self.options.extras)
+            if job.mode == 'SLURM':
+                command = (
+                    f'auto.xds xscale_par'
+                    f'--nodes=1 '
+                    f'--tasks=1 '
+                    f'--cpus={job.cpus} '
+                    f'--host={job.host} '
+                    f'--partition={job.partition} '
+                )
+            else:
+                command = f'auto.xds xscale_par'
+
+            run_command(command, f'- Scaling {len(scalable_experiments)} dataset(s) for {method}')
             scaling = XDSParser.parse_xscale()
         except CommandFailed as err:
             result = generate_failure(f'Command Failed: {err}')
