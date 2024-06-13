@@ -187,7 +187,7 @@ class XDSAnalysis(Analysis):
 
             if job.user and job.nodes and job.cpus and job.tasks:
                 command = (
-                    f'auto.xds xds_par '
+                    f'auto.xds '
                     f'--nodes={job.nodes} '
                     f'--cpus={job.cpus} '
                     f'--tasks={job.tasks} '
@@ -195,7 +195,7 @@ class XDSAnalysis(Analysis):
                     f'--partition={job.partition} '
                 )
             else:
-                command = f'auto.xds xds_par'
+                command = f'auto.xds'
 
             try:
                 run_command(command, desc=f'{experiment.name}: Finding strong spots in images {image_range}')
@@ -273,11 +273,21 @@ class XDSAnalysis(Analysis):
             }
             io_options.update(**self.options.extras)
             io.filter_spots()
-            io.create_input_file(('IDXREF', 'DEFPIX', 'XPLAN'), experiment, io.XDSParameters(**io_options))
-
+            job = io.create_input_file(('IDXREF', 'DEFPIX', 'XPLAN'), experiment, io.XDSParameters(**io_options))
+            if job.user and job.nodes and job.cpus and job.tasks:
+                command = (
+                    f'auto.xds '
+                    f'--nodes=1 '
+                    f'--tasks=1 '
+                    f'--cpus={job.cpus * job.tasks // job.nodes} '
+                    f'--user={job.user} '
+                    f'--partition={job.partition} '
+                )
+            else:
+                command = f'auto.xds'
             try:
                 run_command(
-                    'xds_par', desc=f'{experiment.name}: Calculating optimal strategy', check_files=('XPLAN.LP',)
+                    command, desc=f'{experiment.name}: Calculating optimal strategy', check_files=('XPLAN.LP',)
                 )
                 details = XDSParser.parse('XPLAN.LP')
             except (FileNotFoundError, CommandFailed) as err:
@@ -425,7 +435,7 @@ class XDSAnalysis(Analysis):
             job = io.create_input_file(('DEFPIX', 'INTEGRATE', 'CORRECT',), experiment, io.XDSParameters(**io_options))
             if job.user and job.nodes and job.cpus and job.tasks:
                 command = (
-                    f'auto.xds xds_par '
+                    f'auto.xds '
                     f'--nodes={job.nodes} '
                     f'--cpus={job.cpus} '
                     f'--tasks={job.tasks} '
@@ -433,7 +443,7 @@ class XDSAnalysis(Analysis):
                     f'--partition={job.partition} '
                 )
             else:
-                command = f'auto.xds xds_par'
+                command = f'auto.xds'
 
             try:
                 run_command(
@@ -534,9 +544,22 @@ class XDSAnalysis(Analysis):
                 }
                 io_options.update(**self.options.extras)
                 io_options.update(lattice=reindex_lattice, reindex=reindex_matrix)
-                io.create_input_file(('CORRECT',), experiment, io.XDSParameters(**io_options))
+                job = io.create_input_file(('CORRECT',), experiment, io.XDSParameters(**io_options))
+
+                if job.user and job.nodes and job.cpus and job.tasks:
+                    command = (
+                        f'auto.xds '
+                        '--nodes=1 '
+                        '--tasks=1 '
+                        f'--cpus={job.cpus * job.nodes // job.tasks} '
+                        f'--user={job.user} '
+                        f'--partition={job.partition} '
+                    )
+                else:
+                    command = f'auto.xds'
+
                 run_command(
-                    'xds_par', desc=f'- Applying symmetry {reindex_lattice.name} - #{reindex_lattice.spacegroup}'
+                    command, desc=f'- Applying symmetry {reindex_lattice.name} - #{reindex_lattice.spacegroup}'
                 )
                 run_command('echo "XDS_ASCII.HKL" | xdsstat 20 3 > XDSSTAT.LP', desc=f'- Gathering extra statistics')
                 correction = XDSParser.parse('CORRECT.LP')
