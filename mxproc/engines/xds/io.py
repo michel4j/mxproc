@@ -21,7 +21,7 @@ XDSRefinement = Literal["CELL", "BEAM", "ORIENTATION", "AXIS",  "DISTANCE", "POS
 class JobParameters:
     nodes: int | None = None
     cpus: int | None = None
-    user: str | None = None
+    host: str | None = None
     tasks: int | None = None
     partition: str | None = None
 

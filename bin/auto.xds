@@ -31,14 +31,14 @@ def tail(file_path: Path, sentinel="XDS-DONE", interval=0.1):
             yield text
 
 
-def run_slurm_job(nodes: int, cpus: int, tasks: int, user: str, partition: str = 'batch', duration: str = '00:30:00'):
+def run_slurm_job(nodes: int, cpus: int, tasks: int, host: str, partition: str = 'batch', duration: str = '00:30:00'):
     """
     Submit a SLURM job script to the cluster.
 
     :param nodes: Number of nodes
     :param cpus: Number of CPUs per task
     :param tasks: Total Number of tasks per node
-    :param user: slurm user and hostname like 'username@hostname'
+    :param host: hostname or 'user@hostname' for ssh remote submission
     :param duration: maximum duration of slurm job
     :param partition: slurm partition
     """
@@ -52,7 +52,7 @@ def run_slurm_job(nodes: int, cpus: int, tasks: int, user: str, partition: str =
         f"#SBATCH --nodes={nodes}\n"
         f"#SBATCH --ntasks-per-node={tasks//nodes}  # number of MPI processes\n"
         f"#SBATCH --cpus-per-task={cpus}            # number of OpenMP threads\n"
-        "#SBATCH --mem=0                           # use all memory\n"
+        "#SBATCH --mem=0                            # use all memory\n"
         f"#SBATCH --time={duration}\n"
         f"#SBATCH --output={log_file}\n\n"
         f"# run xds_par \n"
@@ -66,7 +66,7 @@ def run_slurm_job(nodes: int, cpus: int, tasks: int, user: str, partition: str =
         file.write(job_script)
 
     current_dir = Path.cwd().resolve()
-    ssh_command = f'ssh -x {user} "cd {current_dir}; sbatch {job_script_file}"'
+    ssh_command = f'ssh -x {host} "cd {current_dir}; sbatch {job_script_file}"'
     subprocess.run(ssh_command, shell=True)
 
     # tail log file until job to complete
@@ -88,16 +88,16 @@ if __name__ == "__main__":
     parser.add_argument("--nodes", type=int, help="Number of nodes")
     parser.add_argument("--cpus", type=int, help="Number of CPUs per task")
     parser.add_argument("--tasks", type=int, help="Total Number of tasks per node")
-    parser.add_argument("--user", type=str, help="Slurm SSH User eg username@hostname")
+    parser.add_argument("--host", type=str, help="Slurm host or user@host for SSH")
     parser.add_argument("--partition", type=str, default='batch', help="Slurm partition")
 
     args = parser.parse_args()
-    if args.nodes and args.cpus and args.tasks and args.user:
+    if args.nodes and args.cpus and args.tasks and args.host:
         run_slurm_job(
             nodes=args.nodes,
             cpus=args.cpus,
             tasks=args.tasks,
-            user=args.user,
+            host=args.host,
             partition=args.partition
         )
     else:

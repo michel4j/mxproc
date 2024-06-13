@@ -35,8 +35,8 @@ class IndexParamManager:
     of suggested parameter changes would be based on the success or failure of previous attempts
     """
 
-    degrees: dict  # parameter degrees
-    params: dict  # previous parameters
+    degrees: dict   # parameter degrees
+    params: dict    # previous parameters
     min_sigma: float  # Maximum Spot Sigma Value
     max_sigma: float  # Minimum Spot Sigma Value
 
@@ -185,13 +185,13 @@ class XDSAnalysis(Analysis):
             job = io.create_input_file(('XYCORR', 'INIT', 'COLSPOT'), experiment, io.XDSParameters(**io_options))
             image_range = summarize_ranges(io_options['spot_range'])
 
-            if job.user and job.nodes and job.cpus and job.tasks:
+            if job.host and job.nodes and job.cpus and job.tasks:
                 command = (
                     f'auto.xds '
                     f'--nodes={job.nodes} '
                     f'--cpus={job.cpus} '
                     f'--tasks={job.tasks} '
-                    f'--user={job.user} '
+                    f'--host={job.host} '
                     f'--partition={job.partition} '
                 )
             else:
@@ -274,13 +274,13 @@ class XDSAnalysis(Analysis):
             io_options.update(**self.options.extras)
             io.filter_spots()
             job = io.create_input_file(('IDXREF', 'DEFPIX', 'XPLAN'), experiment, io.XDSParameters(**io_options))
-            if job.user and job.nodes and job.cpus and job.tasks:
+            if job.host and job.nodes and job.cpus and job.tasks:
                 command = (
                     f'auto.xds '
                     f'--nodes=1 '
                     f'--tasks=1 '
                     f'--cpus={job.cpus * job.tasks // job.nodes} '
-                    f'--user={job.user} '
+                    f'--host={job.host} '
                     f'--partition={job.partition} '
                 )
             else:
@@ -433,13 +433,13 @@ class XDSAnalysis(Analysis):
                 )
 
             job = io.create_input_file(('DEFPIX', 'INTEGRATE', 'CORRECT',), experiment, io.XDSParameters(**io_options))
-            if job.user and job.nodes and job.cpus and job.tasks:
+            if job.host and job.nodes and job.cpus and job.tasks:
                 command = (
                     f'auto.xds '
                     f'--nodes={job.nodes} '
                     f'--cpus={job.cpus} '
                     f'--tasks={job.tasks} '
-                    f'--user={job.user} '
+                    f'--host={job.host} '
                     f'--partition={job.partition} '
                 )
             else:
@@ -546,13 +546,13 @@ class XDSAnalysis(Analysis):
                 io_options.update(lattice=reindex_lattice, reindex=reindex_matrix)
                 job = io.create_input_file(('CORRECT',), experiment, io.XDSParameters(**io_options))
 
-                if job.user and job.nodes and job.cpus and job.tasks:
+                if job.host and job.nodes and job.cpus and job.tasks:
                     command = (
                         f'auto.xds '
                         '--nodes=1 '
                         '--tasks=1 '
                         f'--cpus={job.cpus * job.nodes // job.tasks} '
-                        f'--user={job.user} '
+                        f'--host={job.host} '
                         f'--partition={job.partition} '
                     )
                 else:

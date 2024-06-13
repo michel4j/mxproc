@@ -423,7 +423,7 @@ class Application:
 
         # cluster arguments
         def valid_cluster(value):
-            pattern = re.compile(r'(?P<partition> \w):(?P<user>[^,]+),(?P<nodes>\d+),(?P<cpus>\d+)$')
+            pattern = re.compile(r'(?P<partition> \w):(?P<host>[^,]+),(?P<nodes>\d+),(?P<cpus>\d+)$')
             m = pattern.match(value)
             if not m:
                 raise argparse.ArgumentTypeError('Cluster format should be "nodes:cores"')
