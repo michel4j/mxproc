@@ -23,6 +23,7 @@ classifiers = [
 ]
 dependencies = [
     "mxio",
+    "parsefire",
     "matplotlib",
     "numpy",
     "pyyaml",

@@ -10,7 +10,7 @@ root:
     twinning:
       fields:
         - "  Mean |L|   :<float:l_statistic> (untwinned: <float:l_statistic>; perfect twin: <float:l_statistic>)"
-        - "Multivariate Z score L-test: <float:l_zscore>"
+        - "Multivariate Z score L-tests: <float:l_zscore>"
 
       sections:
         laws:
@@ -18,7 +18,7 @@ root:
           table:  "| <char:operator:8> | <char:type:4> | <float:r_obs> | <float:britton_alpha> | <float:H_alpha> | <float:ML_alpha> |"
 
         l_test:
-          domain: "TABLE: L test(.+?)\n\n"
+          domain: "TABLE: L tests(.+?)\n\n"
           table: "<float:abs_l> <float:observed> <float:untwinned> <float:twinned>"
 
         plots:

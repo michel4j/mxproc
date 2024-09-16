@@ -5,7 +5,9 @@ from enum import auto
 from numpy.typing import NDArray
 from pathlib import Path
 from typing import Any, Tuple
-from mxproc.common import TextParser, StateType, MissingLexicon, FilesMissing, Flag, Result
+from parsefire import parser
+
+from mxproc.common import StateType, Flag, Result
 from mxproc.log import logger
 from mxproc.xtal import lattice_point_groups, Lattice, POINT_GROUPS
 
@@ -123,7 +125,7 @@ def get_spot_distribution() -> Any:
     return results, (results[range_start, 0], results[range_end, 0])
 
 
-class XDSParser(TextParser):
+class XDSParser(parser.TextParser):
     LEXICON = {
         "COLSPOT.LP": DATA_PATH / "spots.yml",
         "IDXREF.LP": DATA_PATH / "idxref.yml",
@@ -144,7 +146,7 @@ class XDSParser(TextParser):
         try:
             log_details = cls.parse('IDXREF.LP')
             param_details = cls.parse('XPARM.XDS', silent=True)
-        except (FilesMissing, FileNotFoundError, MissingLexicon) as err:
+        except (parser.FilesMissing, FileNotFoundError, parser.MissingLexicon) as err:
             logger.exception(err)
             problems |= IndexProblem.SOFTWARE_ERROR
         else:

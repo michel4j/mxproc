@@ -3,26 +3,16 @@ from __future__ import annotations
 import json
 import os
 import shutil
-import argparse
-import importlib
-
-from itertools import tee
 from dataclasses import dataclass, field
 from enum import Enum, IntEnum, IntFlag
+from itertools import tee
 from pathlib import Path
-from typing import Tuple, Sequence, Any, List, Dict, Type
+from typing import Tuple, Sequence, Any, List, Dict
 
 import numpy as np
-import yaml
-from mxio import parser
-from scipy.integrate import nquad
 
 from mxproc.log import logger
 from mxproc.xtal import Lattice
-
-
-class MissingLexicon(Exception):
-    ...
 
 
 class FilesMissing(Exception):
@@ -37,53 +27,6 @@ class Flag(IntFlag):
 
     def values(self) -> Tuple:
         return tuple(problem for problem in self.__class__ if problem in self)
-
-
-class TextParser:
-    LEXICON: dict
-
-    @classmethod
-    def parse(cls, filename: str, silent=False) -> dict:
-        """
-        Parse the provided file and return a dictionary
-        :param filename: text file to parse
-        :param silent: return empty dictionary instead of throwing exceptions
-        """
-
-        try:
-            lex = cls.get_lexicon(Path(filename).name)
-            info = parser.parse_file(filename, lex)
-        except (MissingLexicon, FileNotFoundError, KeyError):
-            info = {}
-            if not silent:
-                raise
-        return info
-
-    @classmethod
-    def parse_text(cls, text: str, lexicon: dict) -> Any:
-        """
-        Parse the given text using the lexicon dictionary
-        :param text: text to parse
-        :param lexicon: lexicon specification dictionary
-        """
-        return parser.parse_text(lexicon, text)
-
-    @classmethod
-    def get_lexicon(cls, filename) -> dict:
-        """
-        Return the lexicon specified for a given file
-        :param filename:
-        :return: dictionary
-        """
-
-        try:
-            spec_file = cls.LEXICON[filename]
-            with open(spec_file, 'r') as file:
-                specs = yaml.safe_load(file)
-        except (KeyError, FileNotFoundError):
-            raise MissingLexicon(f"No Lexicon available for file {filename!r}")
-
-        return specs["root"]
 
 
 class Workflow(IntEnum):
@@ -212,7 +155,7 @@ class ResolutionMethod(Enum):
 RESOLUTION_DESCRIPTION = {
     ResolutionMethod.EDGE: "detector edge",
     ResolutionMethod.SIGMA: "I/Sigma(I) > 1.0",
-    ResolutionMethod.CC_HALF: "CC 1/2 Significance test",
+    ResolutionMethod.CC_HALF: "CC 1/2 Significance tests",
     ResolutionMethod.R_FACTOR: "R-Factor < 30%",
     ResolutionMethod.MANUAL: "user request"
 }
@@ -396,7 +339,7 @@ def summarize_ranges(series: Sequence[Tuple[int, int]]) -> str:
     :return: text summary for example, "1-10,16,18,25-26"
     """
     return ','.join([
-        f'{p[0]}-{p[1]-1}' if p[1] > p[0] + 1 else f'{p[0]}' for p in series
+        f'{p[0]}-{p[1] - 1}' if p[1] > p[0] + 1 else f'{p[0]}' for p in series
     ])
 
 

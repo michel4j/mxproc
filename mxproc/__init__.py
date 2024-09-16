@@ -255,7 +255,7 @@ class Analysis(ABC):
         """
         Check if a given analysis step was successfully completed for a given experiment
         :param expt: the Experiment to check
-        :param step: Analysis step to test
+        :param step: Analysis step to tests
         """
 
         if step.name in self.results[expt.identifier]:

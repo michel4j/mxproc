@@ -668,7 +668,7 @@ class XDSAnalysis(Analysis):
             job = io.write_xscale_input(scale_configs, **self.options.extras)
             if job.mode == 'SLURM':
                 command = (
-                    f'auto.xds xscale_par'
+                    f'auto.xds xscale_par '
                     f'--nodes=1 '
                     f'--tasks=1 '
                     f'--cpus={job.cpus} '
@@ -786,8 +786,8 @@ class XDSAnalysis(Analysis):
             run_command(command, f'- Exporting Unmerged MTZ reflection file "{prefix}-unmerged.mtz"')
 
             # Unmerged MTZ
-            command = f'phenix.reflection_file_converter  {scaled_input} --generate_r_free_flags --mtz={prefix}.mtz'
-            run_command(command, f'- Exporting Unmerged MTZ reflection file "{prefix}.mtz"')
+            # command = f'phenix.reflection_file_converter  {scaled_input} --generate_r_free_flags --mtz={prefix}.mtz'
+            # run_command(command, f'- Exporting Unmerged MTZ reflection file "{prefix}.mtz"')
 
     @staticmethod
     def show_quality(info: dict):
