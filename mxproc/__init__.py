@@ -114,21 +114,14 @@ class Analysis(ABC):
         self.args = args
         self.experiments = ()
 
-        # Prepare working directory
-        directory = Path(self.args.dir)
+        # prepare and load experiment
         if args.images:
-            top_level = directory
-            if not self.args.dir:
-                index = 0
-                directory = top_level / f"{self.prefix}-{index}"
-                while directory.exists():
-                    index += 1
-                    directory = top_level / f"{self.prefix}-{index}"
             self.experiments = load_multiple(self.args.images)
+            directory = self.prepare_directory(self.args.dir)
         else:
+            # Load from current working directory
+            directory = Path(self.args.dir).absolute()
             logger.info_value('Resuming', str(directory))
-        directory = directory.absolute()
-        directory.mkdir(parents=True, exist_ok=True)
 
         self.options = AnalysisOptions(
             directory=directory, extras=self.get_extras(self.args), **self.get_options(self.args)
@@ -152,6 +145,29 @@ class Analysis(ABC):
             StepType.EXPORT: self.export,
             StepType.REPORT: self.report
         }
+
+    def prepare_directory(self, directory: str) -> Path:
+        """
+        Prepare the working directory for the analysis, if the directory is provided and already exists,
+        do not create a new one, otherwise create a new directory with a unique name.
+
+        :param directory: path to the working directory
+        :return: Path object for working directory. Directory exists at this point
+        """
+
+        top_level = Path(directory).absolute()
+        if not directory:
+            # No directory string provided, create a new directory
+            index = 0
+            path = top_level / f"{self.prefix}-{index}"
+            while path.exists():
+                index += 1
+                path = top_level / f"{self.prefix}-{index}"
+            path.mkdir(parents=True, exist_ok=True)
+        else:
+            path = top_level
+
+        return path
 
     def get_extras(self, args: argparse.Namespace) -> dict:
         """
