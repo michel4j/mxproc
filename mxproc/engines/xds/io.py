@@ -186,7 +186,7 @@ def create_input_file(jobs: Sequence[XDSJob], experiment: Experiment, parameters
         f"ORGX={origin.x:5.0f}  ORGY={origin.y:5.0f}\n"
         f"SENSOR_THICKNESS= {experiment.sensor_thickness:0.3f}\n"
         f"OVERLOAD= {experiment.cutoff_value}\n"
-        f"STRONG_PIXEL= {parameters.strong_sigma:0.1f} ! NOTE: SPOT.XDS managed externally \n"
+        # f"SIGNAL_PIXEL= {parameters.strong_sigma:0.1f} ! NOTE: SPOT.XDS managed externally \n"
         "TRUSTED_REGION=0.00 1.2\n"
         f"TEST_RESOLUTION_RANGE= 50.0 {max(1.0, parameters.resolution_limit):0.2f}\n"
         "TOTAL_SPINDLE_ROTATION_RANGES= 30 180 30\n"
@@ -287,10 +287,10 @@ def filter_spots(
     num_columns = len(spots[0])
     frames = numpy.round(spots[:, 2]).astype(int)
 
-    if min_sigma is not None:
-        selected &= sigma > (min_sigma + 2)
-    if max_sigma is not None:
-        selected &= sigma < max_sigma
+    # if min_sigma is not None:
+    #     selected &= sigma > (min_sigma + 2)
+    # if max_sigma is not None:
+    #     selected &= sigma < max_sigma
 
     excluded = (frames < 0)   # start with none excluded
     for start, end in exclude_frames:
