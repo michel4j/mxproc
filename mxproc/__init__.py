@@ -156,6 +156,8 @@ class Analysis(ABC):
         """
 
         top_level = Path(directory).absolute()
+        path = top_level
+
         if not directory:
             # No directory string provided, create a new directory
             index = 0
@@ -163,9 +165,9 @@ class Analysis(ABC):
             while path.exists():
                 index += 1
                 path = top_level / f"{self.prefix}-{index}"
+
+        if not path.exists():
             path.mkdir(parents=True, exist_ok=True)
-        else:
-            path = top_level
 
         return path
 

@@ -783,11 +783,11 @@ class XDSAnalysis(Analysis):
 
             # MTZ
             command = f'phenix.reflection_file_converter  {scaled_input} --write_unmerged --mtz={prefix}.mtz'
-            run_command(command, f'- Exporting Unmerged MTZ reflection file "{prefix}-unmerged.mtz"')
+            run_command(command, f'- Exporting Unmerged MTZ reflection file "{prefix}.mtz"')
 
             # Unmerged MTZ
-            # command = f'phenix.reflection_file_converter  {scaled_input} --generate_r_free_flags --mtz={prefix}.mtz'
-            # run_command(command, f'- Exporting Unmerged MTZ reflection file "{prefix}.mtz"')
+            command = f'phenix.reflection_file_converter  {scaled_input} --generate_r_free_flags --mtz={prefix}-freer.mtz'
+            run_command(command, f'- Exporting Unmerged MTZ reflection file with FreeR "{prefix}-freer.mtz"')
 
     @staticmethod
     def show_quality(info: dict):
