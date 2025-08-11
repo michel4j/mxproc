@@ -50,7 +50,7 @@ def run_slurm_job(command: str, nodes: int, cpus: int, tasks: int, host: str, pa
     job_script = (
         "#!/bin/bash \n\n"
         f"#SBATCH --partition={partition}\n"
-        f"#SBATCH --nodes={nodes}\n"
+        f"#SBATCH --nodes=1-{nodes}\n"
         f"#SBATCH --ntasks-per-node={tasks//nodes}  # number of MPI processes\n"
         f"#SBATCH --cpus-per-task={cpus}            # number of OpenMP threads\n"
         "#SBATCH --mem=0                            # use all memory\n"
