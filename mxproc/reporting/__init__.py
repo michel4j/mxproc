@@ -16,16 +16,18 @@ from .text import text_report
 DATA_DIR = Path(__file__).parent / 'data'
 
 
-def save_report(report: dict, path: Path):
+def save_report(report: dict, path: Path, outputs: List[str] = None):
     """
     Save the given report to the
     :param report: dictionary containing the report
     :param path: location to store the report
+    :param outputs: list of output files to include in the report, file names only, no path
     """
 
+    outputs = outputs or []
     report_file = path / 'report.json'
     text_file = path / 'report.txt'
-    report.update(id=None, data_id=None, directory=str(path), filename='report.json')
+    report.update(id=None, data_id=None, directory=str(path), outputs=outputs, filename='report.json')
 
     # read previous json_file and obtain id from it if one exists:
     if report_file.exists():
