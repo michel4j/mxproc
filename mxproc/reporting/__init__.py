@@ -16,15 +16,15 @@ from .text import text_report
 DATA_DIR = Path(__file__).parent / 'data'
 
 
-def save_report(report: dict, path: Path, outputs: List[str] = None):
+def save_report(report: dict, path: Path, outputs: dict = None):
     """
     Save the given report to the
     :param report: dictionary containing the report
     :param path: location to store the report
-    :param outputs: list of output files to include in the report, file names only, no path
+    :param outputs: dictionary mapping file types to file names, no path
     """
 
-    outputs = outputs or []
+    outputs = outputs or {}
     report_file = path / 'report.json'
     text_file = path / 'report.txt'
     report.update(id=None, data_id=None, directory=str(path), outputs=outputs, filename='report.json')

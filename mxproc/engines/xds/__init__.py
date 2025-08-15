@@ -767,7 +767,7 @@ class XDSAnalysis(Analysis):
         return quality
 
     def export(self, **kwargs):
-        outputs = []
+        outputs = {}
         for scaled_input, names in self.settings.get('outputs', {}).items():
             # get common name and strip special characters from ending.
             common_name = re.sub(r"[-_+]$", '', os.path.commonprefix(names))
@@ -781,19 +781,17 @@ class XDSAnalysis(Analysis):
                 'prefix': prefix,
             })
             run_command('xdsconv', f'- Exporting SHELX reflection file "{prefix}-shelx.hkl"')
+            outputs['shelx'] = f"{prefix}-shelx.hkl"
 
             # MTZ
             command = f'phenix.reflection_file_converter  {scaled_input} --write_unmerged --mtz={prefix}.mtz'
             run_command(command, f'- Exporting Unmerged MTZ reflection file "{prefix}.mtz"')
+            outputs['mtz'] = f"{prefix}.mtz"
 
             # Unmerged MTZ
             command = f'phenix.reflection_file_converter  {scaled_input} --generate_r_free_flags --mtz={prefix}-freer.mtz'
             run_command(command, f'- Exporting Unmerged MTZ reflection file with FreeR "{prefix}-freer.mtz"')
-            outputs.extend([
-               f"{prefix}-shelx.hkl",
-               f"{prefix}.mtz",
-               f"{prefix}-freer.mtz",
-            ])
+            outputs['freer'] = f"{prefix}-freer.mtz"
 
         self.settings['reflection_files'] = outputs
 
@@ -951,7 +949,7 @@ class XDSAnalysis(Analysis):
                 }
                 report_file = short_path(self.options.directory / "report.html", self.options.directory.parent)
                 logger.info(f'- HTML report: {report_file}')
-                reporting.save_report(report, self.options.directory, outputs=self.settings.get('reflection_files', []))
+                reporting.save_report(report, self.options.directory, outputs=self.settings.get('reflection_files', {}))
             else:
                 raise CommandFailed('No successful results to report on!')
         else:
@@ -973,7 +971,7 @@ class XDSAnalysis(Analysis):
                         'details': reporting.single_details(self, expt)
                     }
                     logger.info(f'- HTML report: {report_file}')
-                    reporting.save_report(report, work_dir, outputs=self.settings.get('reflection_files', []))
+                    reporting.save_report(report, work_dir, outputs=self.settings.get('reflection_files', {}))
             else:
                 raise CommandFailed('No successful results to report on!')
 
