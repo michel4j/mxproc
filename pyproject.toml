@@ -1,8 +1,3 @@
-[build-system]
-requires = ["setuptools", "wheel", "setuptools-scm"]
-build-backend = "setuptools.build_meta"
-
-
 [project]
 name = "mxproc"
 dynamic = ["version"]
@@ -11,14 +6,12 @@ description = "MX Automated Data Processing Pipeline"
 readme = "README.md"
 keywords = ["Data Processing Pipeline", "MX", "AutoProcess"]
 authors = [
-    {name = "Michel Fodje", email = "michel4j@gmail.com"}
+    {name = "Michel Fodje", email = "michel.fodje@lightsource.ca" },
 ]
 classifiers = [
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.9",
-    "Programming Language :: Python :: 3.10",
-    "Programming Language :: Python :: 3.11",
-    "Programming Language :: Python :: 3.12",
 ]
 dependencies = [
     "mxio",
@@ -32,24 +25,38 @@ dependencies = [
     "vg",
     "scipy"
 ]
-
-
+requires-python = ">=3.10,<4.0"
 
 [project.urls]
 Homepage = "https://github.com/michel4j/mxproc"
+Issues = "https://github.com/michel4j/mxproc/issues"
 
 
-[tool.setuptools_scm]
-
-[tool.setuptools]
-script-files = [
-    'bin/auto.init',
-    'bin/auto.xds',
-    'bin/auto.index',
-    'bin/auto.spots',
-    'bin/auto.integrate',
-    'bin/auto.process',
-    'bin/auto.scale',
-    'bin/auto.strategy',
-    'bin/auto.symmetry',
+[tool.poetry]
+packages = [
+    { include = "mxproc", from = "." },
 ]
+version = "0.0.0"
+
+[tool.poetry.scripts]
+"auto.init" = "mxproc.scripts:auto_init"
+"auto.xds" = "mxproc.scripts:auto_xds"
+"auto.index" = "mxproc.scripts:auto_index"
+"auto.spots" = "mxproc.scripts:auto_spots"
+"auto.integrate" = "mxproc.scripts:auto_integrate"
+"auto.process" = "mxproc.scripts:auto_process"
+"auto.scale" = "mxproc.scripts:auto_scale"
+"auto.strategy" = "mxproc.scripts:auto_strategy"
+"auto.symmetry" = "mxproc.scripts:auto_symmetry"
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0", "poetry-dynamic-versioning>=1.0.0,<2.0.0"]
+build-backend = "poetry_dynamic_versioning.backend"
+
+[tool.poetry.requires-plugins]
+poetry-dynamic-versioning = { version = ">=1.0.0,<2.0.0", extras = ["plugin"] }
+
+[tool.poetry-dynamic-versioning]
+enable = true
+vcs = "git"
+format = "{base}.{revision}{distance}"

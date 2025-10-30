@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
 
 import sys
-from mxproc import Application
+from mxproc.scripts import auto_process
 
 
 if __name__ == "__main__":
-    app = Application(description='Automatically Process a dataset')
-    sys.exit(app.run())
+    sys.exit(auto_process())

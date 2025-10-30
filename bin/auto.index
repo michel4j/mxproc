@@ -1,9 +1,7 @@
 #!/usr/bin/env python3
 
 import sys
-from mxproc.common import StepType
-from mxproc import Application
+from mxproc.scripts import auto_index
 
 if __name__ == "__main__":
-    app = Application(description="Auto-Index Dataset", step=StepType.INDEX)
-    sys.exit(app.run())
+    sys.exit(auto_index())
