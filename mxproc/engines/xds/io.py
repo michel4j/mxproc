@@ -193,7 +193,7 @@ def create_input_file(jobs: Sequence[XDSJob], experiment: Experiment, parameters
         "STARTING_ANGLES_OF_SPINDLE_ROTATION= 0 180 15\n"
         "VALUE_RANGE_FOR_TRUSTED_DETECTOR_PIXELS= 6000 30000\n"
         f"INCLUDE_RESOLUTION_RANGE=50.0 {parameters.resolution_limit:0.2f}\n"
-        "FRACTION_OF_POLARIZATION=0.99\n"
+        "FRACTION_OF_POLARIZATION=0.98\n"
         "POLARIZATION_PLANE_NORMAL= 0.0 1.0 0.0\n"
         f"ROTATION_AXIS= {rot_axis[0]:0.3f} {rot_axis[1]:0.3f} {rot_axis[2]:0.3f}\n"
         f"INCIDENT_BEAM_DIRECTION= {beam_axis[0]:0.3f} {beam_axis[1]:0.3f} {beam_axis[2]:0.3f}\n"
@@ -204,6 +204,11 @@ def create_input_file(jobs: Sequence[XDSJob], experiment: Experiment, parameters
     extra_text = "!----------------- Extra parameters\n"
     if 'PILATUS' in detector_name or 'EIGER' in detector_name:
         extra_text += "NUMBER_OF_PROFILE_GRID_POINTS_ALONG_ALPHA/BETA= 13\n"
+        extra_text += "NUMBER_OF_PROFILE_GRID_POINTS_ALONG_GAMMA= 13\n"
+
+    if 'EIGER' in detector_name:
+        spot_size_pixels = 3.0
+        spot_gap_pixels = 4.0
 
     if parameters.spot_separation > 0:
         min_sep = round(parameters.spot_separation * spot_gap_pixels)
@@ -242,6 +247,11 @@ def create_input_file(jobs: Sequence[XDSJob], experiment: Experiment, parameters
             f'REFLECTING_RANGE=  {parameters.refl_range}\n'
             f'REFLECTING_RANGE_E.S.D.=  {parameters.refl_range_esd}\n'
         )
+
+    rects = os.getenv('XDS_UNTRUSTED_RECTANGLES', '').split(':')
+    for rect in rects:
+        if rect:
+            extra_text += f'UNTRUSTED_RECTANGLE= {rect}\n'
 
     with open('XDS.INP', 'w') as outfile:
         outfile.write(job_text)

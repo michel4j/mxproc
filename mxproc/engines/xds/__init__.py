@@ -169,8 +169,10 @@ class XDSAnalysis(Analysis):
             directory.mkdir(parents=True, exist_ok=True)
             self.options.working_directories[experiment.identifier] = directory
             os.chdir(self.options.working_directories[experiment.identifier])
+            spot_range = [(r[0], r[1] // 2) for r in experiment.frames]
             io_options = {
-                'data_range': experiment.frames, 'spot_range': experiment.frames,
+                'data_range': experiment.frames,
+                'spot_range': spot_range,
                 'beam_center': experiment.detector_origin
             }
             io_options.update(self.options.extras)
@@ -186,8 +188,10 @@ class XDSAnalysis(Analysis):
     def find_spots(self, **kwargs):
         results = {}
         for experiment in self.experiments:
+            spot_range = [(r[0], r[1] // 2) for r in experiment.frames]
             io_options = {
-                'data_range': experiment.frames, 'spot_range': experiment.frames,
+                'data_range': experiment.frames,
+                'spot_range': spot_range,
                 'beam_center': experiment.detector_origin
             }
             io_options.update(self.options.extras)
@@ -228,9 +232,10 @@ class XDSAnalysis(Analysis):
 
             result = generate_failure('')
             logger.info(f'{experiment.name}:')
+            spot_range = [(r[0], r[1] // 2) for r in experiment.frames]
             io_options = {
                 'data_range': experiment.frames,
-                'spot_range': experiment.frames,
+                'spot_range': spot_range,
                 'anomalous': self.options.anomalous,
                 'beam_center': experiment.detector_origin
             }
@@ -272,10 +277,10 @@ class XDSAnalysis(Analysis):
             os.chdir(self.options.working_directories[experiment.identifier])
             index_result = self.get_step_result(experiment, StepType.INDEX)
             lattice = index_result.get('symmetry_lattice')
-
+            spot_range = [(r[0], r[1]//2) for r in experiment.frames]
             io_options = {
                 'data_range': experiment.frames,
-                'spot_range': experiment.frames,
+                'spot_range': spot_range,
                 'anomalous': self.options.anomalous,
                 'lattice': lattice,
                 'beam_center': experiment.detector_origin,
@@ -419,9 +424,10 @@ class XDSAnalysis(Analysis):
                 continue
 
             logger.info(f'{experiment.name}:')
+            spot_range = [(r[0], r[1]//2) for r in experiment.frames]
             io_options = {
                 'data_range': experiment.frames,
-                'spot_range': experiment.frames,
+                'spot_range': spot_range,
                 'anomalous': self.options.anomalous,
             }
             io_options.update(**self.options.extras)
@@ -547,9 +553,10 @@ class XDSAnalysis(Analysis):
                 reference_data = None
 
             try:
+                spot_range = [(r[0], r[1] // 2) for r in experiment.frames]
                 io_options = {
                     "data_range": experiment.frames,
-                    "spot_range": experiment.frames,
+                    "spot_range": spot_range,
                     "reference": reference_data,
                 }
                 io_options.update(**self.options.extras)
