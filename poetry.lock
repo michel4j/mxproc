@@ -848,14 +848,14 @@ dev = ["meson-python (>=0.13.1,<0.17.0)", "pybind11 (>=2.13.2,!=2.13.3)", "setup
 
 [[package]]
 name = "mxio"
-version = "2025.10.1"
+version = "2025.10.6"
 description = "A Simple X-ray Area Detector Data IO Library"
 optional = false
 python-versions = "<4.0,>=3.9"
 groups = ["main"]
 files = [
-    {file = "mxio-2025.10.1-py3-none-any.whl", hash = "sha256:bbf62ab38b12e7af3f4150fe720ed77f2158f7afba4f16872f03caeb11d375d7"},
-    {file = "mxio-2025.10.1.tar.gz", hash = "sha256:bd6a2ae3ab4201dfcc1f2acd3215d1cf7bac13ef7433380d99e200fe5801b9ed"},
+    {file = "mxio-2025.10.6-py3-none-any.whl", hash = "sha256:22678fb29c6788e752c90213c42bcffa595e0b9f86a0d6926c3f0edd3a423826"},
+    {file = "mxio-2025.10.6.tar.gz", hash = "sha256:47712a24cd5f5d641e55627500b1d28da72679662c809866a241c49e91211adb"},
 ]
 
 [package.dependencies]
@@ -867,6 +867,7 @@ numpy = "*"
 opencv-python = "*"
 parsefire = "*"
 poetry-dynamic-versioning = ">=1.0.0"
+pycbf = ">=0.9.6.7,<0.10.0.0"
 python-magic = "*"
 pytz = "*"
 pyyaml = "*"
@@ -1231,6 +1232,48 @@ wcwidth = "*"
 
 [package.extras]
 tests = ["pytest", "pytest-cov", "pytest-lazy-fixtures"]
+
+[[package]]
+name = "pycbf"
+version = "0.9.6.7"
+description = "An API for CBF/imgCIF Crystallographic Binary Files"
+optional = false
+python-versions = ">=3.9"
+groups = ["main"]
+files = [
+    {file = "pycbf-0.9.6.7-cp310-cp310-macosx_11_0_arm64.whl", hash = "sha256:f6a101d7cf25705ff3d3c36f64764ed0884187e18f3b1f5a2061236bdf6d37ab"},
+    {file = "pycbf-0.9.6.7-cp310-cp310-manylinux_2_12_i686.manylinux2010_i686.manylinux_2_17_i686.manylinux2014_i686.whl", hash = "sha256:1ea3987a8ac465af189ed8ca03fce52250c0c9a109e083560b46770975f5a39c"},
+    {file = "pycbf-0.9.6.7-cp310-cp310-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:42e3322737cc556f333c42fbad0b0c1a99da8c24b7cb883436b14283589ee1bd"},
+    {file = "pycbf-0.9.6.7-cp310-cp310-win32.whl", hash = "sha256:68123061615fd3cfe1717585f6ff6f8e77d20b33dfed454af6a2c0329e132dd4"},
+    {file = "pycbf-0.9.6.7-cp310-cp310-win_amd64.whl", hash = "sha256:c76c48e7164f3f38c61c0c550b3e1c1488b36c2b0f0685f8d47cf0d6708b7294"},
+    {file = "pycbf-0.9.6.7-cp311-cp311-macosx_11_0_arm64.whl", hash = "sha256:39318871bbd3a0465cfeb20ce706df2fbcac9412c4ddcd2c559eeaff843a236b"},
+    {file = "pycbf-0.9.6.7-cp311-cp311-manylinux_2_12_i686.manylinux2010_i686.manylinux_2_17_i686.manylinux2014_i686.whl", hash = "sha256:3cb84b8c890b51b48c298278e7366ad2e661a4dcd8e6a04f4a74d92afdca31bd"},
+    {file = "pycbf-0.9.6.7-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:a72d495559cb35309d2fd6ba32f044fb177e813bc7784d3d251b693d69cb64f4"},
+    {file = "pycbf-0.9.6.7-cp311-cp311-win32.whl", hash = "sha256:f5b7dea03768794ece43480ff9a94d5ac51460cdc4b8e789d0981fd67ecfcd73"},
+    {file = "pycbf-0.9.6.7-cp311-cp311-win_amd64.whl", hash = "sha256:a9d6fac8b5daeb5f535a39d423f47b6f98022b88a3a22cbc171379dff5bfb014"},
+    {file = "pycbf-0.9.6.7-cp312-cp312-macosx_11_0_arm64.whl", hash = "sha256:edfa4f05b1a8717da940bc670924a3bcd7ce9e7ecffd097ac0781fae095b419e"},
+    {file = "pycbf-0.9.6.7-cp312-cp312-manylinux_2_12_i686.manylinux2010_i686.manylinux_2_17_i686.manylinux2014_i686.whl", hash = "sha256:9b78347b8b27d1bc483facbdc92b63a1afe239f45757e7ef203a6851faabced1"},
+    {file = "pycbf-0.9.6.7-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:7acabca9702d787cad7165ae39dc8e3068edbb67a735e6f477724595adedf7c5"},
+    {file = "pycbf-0.9.6.7-cp312-cp312-win32.whl", hash = "sha256:f857ac4a6c961a6ddd2ee2d78ecab14d626c05884c6e8d65aa5d1b8b950a76a9"},
+    {file = "pycbf-0.9.6.7-cp312-cp312-win_amd64.whl", hash = "sha256:3b189c157184197f7a167518dd14d1f7e3b4140fca0c3cc04a2727b2cb40d3cb"},
+    {file = "pycbf-0.9.6.7-cp313-cp313-macosx_11_0_arm64.whl", hash = "sha256:9360b69dfaa832f79067677e3b6197836dab126241f3ee3cf55466a05db8b9bc"},
+    {file = "pycbf-0.9.6.7-cp313-cp313-manylinux_2_12_i686.manylinux2010_i686.manylinux_2_17_i686.manylinux2014_i686.whl", hash = "sha256:cf4d05530f17f08ffcbefc20f7bc1f85b76d77c3788dafecc6271062603a007d"},
+    {file = "pycbf-0.9.6.7-cp313-cp313-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:624aeb8c491760b2c661d174a3b70a318a6b5994b85fb0469ed077d0c0680b9c"},
+    {file = "pycbf-0.9.6.7-cp313-cp313-win32.whl", hash = "sha256:fd7424e25bb96d634c7ad6a7ca2b605e367904fdf6a56dd6739f13ca1ece8eb5"},
+    {file = "pycbf-0.9.6.7-cp313-cp313-win_amd64.whl", hash = "sha256:e6af8530e97fe382db3b33194d2873e474acbb964a7e81dc1e2ac67bd1757ba0"},
+    {file = "pycbf-0.9.6.7-cp39-cp39-macosx_11_0_arm64.whl", hash = "sha256:673d336092db0a5d5be05ab148a5c3414ddad20bd0583f78914657c76e215375"},
+    {file = "pycbf-0.9.6.7-cp39-cp39-manylinux_2_12_i686.manylinux2010_i686.manylinux_2_17_i686.manylinux2014_i686.whl", hash = "sha256:1a427917bddb25fcf54c98dcde7883bd7e2a531139a5314bd0c48c1a4b71f94c"},
+    {file = "pycbf-0.9.6.7-cp39-cp39-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:aeddd50d405e2f7287a87a3c6673bbfac84e1825818a6791788c76bedeb933e6"},
+    {file = "pycbf-0.9.6.7-cp39-cp39-win32.whl", hash = "sha256:ae4521e6bceb9a72507c02a3f88057cf940aee322834e80dd2e0a74bcc7341a8"},
+    {file = "pycbf-0.9.6.7-cp39-cp39-win_amd64.whl", hash = "sha256:d8f44e665265dfeda614e9c65843a1df651e155bcd948a505be1455c1eddfe05"},
+    {file = "pycbf-0.9.6.7.tar.gz", hash = "sha256:981bc5d537e4dd578ab5f3d579042676c9f9abe24609b96aca59f8933a75b4e6"},
+]
+
+[package.dependencies]
+numpy = [
+    {version = ">=1.26", markers = "python_version <= \"3.12\""},
+    {version = ">=2.1", markers = "python_version >= \"3.13\""},
+]
 
 [[package]]
 name = "pycparser"

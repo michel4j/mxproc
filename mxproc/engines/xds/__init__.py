@@ -213,10 +213,12 @@ class XDSAnalysis(Analysis):
 
             try:
                 run_command(command, desc=f'{experiment.name}: Finding strong spots in images {image_range}')
+                print('--------------------->')
                 result = Result(state=StateType.SUCCESS, details=XDSParser.parse('COLSPOT.LP'))
                 io.save_spots()
                 backup_files('SPOT.XDS')
             except CommandFailed as err:
+
                 result = generate_failure(f"Command failed: {err}")
             results[experiment.identifier] = result
         return results
