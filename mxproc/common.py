@@ -372,3 +372,16 @@ def short_path(path: Path | str, parent: Path | str = "") -> str:
     :return: string
     """
     return os.path.relpath(path, parent)
+
+
+class WorkingDir:
+    def __init__(self, new_path):
+        self.new_path = os.path.expanduser(new_path)
+        self.origin = os.getcwd()
+
+    def __enter__(self):
+        os.chdir(self.new_path)
+        return self
+
+    def __exit__(self, etype, value, traceback):
+        os.chdir(self.origin)

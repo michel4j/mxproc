@@ -20,7 +20,7 @@ import yaml
 
 from mxproc import log
 from mxproc.command import CommandFailed
-from mxproc.common import StepType, InvalidAnalysisStep, StateType, Result, Workflow, logistic, parse_ranges
+from mxproc.common import StepType, InvalidAnalysisStep, StateType, Result, Workflow, logistic, parse_ranges, WorkingDir
 from mxproc.xtal import load_multiple, Experiment, Beam
 from mxproc.log import logger
 
@@ -239,18 +239,19 @@ class Analysis(ABC):
             'results': self.results,
             'settings': self.settings
         }
-        meta_file = self.options.directory / f'{step.slug()}.meta'
-        latest_file = self.options.directory / 'latest.meta'
 
-        # backup file if needed
-        if meta_file.exists() and backup:
-            meta_file.rename(f"{str(meta_file)}.bk")
+        meta_file = Path(f'{step.slug()}.meta')
+        latest_file = Path('latest.meta')
 
-        with gzip.open(meta_file, 'wb') as handle:  # gzip compressed yaml file
-            yaml.dump(meta, handle, encoding='utf-8')
-        try:
+        with WorkingDir(self.options.directory):
+            # backup file if needed
+            if meta_file.exists() and backup:
+                meta_file.rename(f"{str(meta_file)}.bk")
+
+            with gzip.open(meta_file, 'wb') as handle:  # gzip compressed yaml file
+                yaml.dump(meta, handle, encoding='utf-8')
+
             latest_file.unlink(missing_ok=True)
-        finally:
             latest_file.symlink_to(meta_file)
 
     def update_result(self, results: Dict[str, Result], step: StepType):
