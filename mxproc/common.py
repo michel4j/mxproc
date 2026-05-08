@@ -8,6 +8,7 @@ import pwd
 import re
 import shutil
 import subprocess
+import tempfile
 from os import PathLike
 from dataclasses import dataclass, field
 from enum import Enum, IntEnum, IntFlag
@@ -135,7 +136,7 @@ def backup_files(*files: str):
             index = 0
             while os.path.exists('%s.%0d' % (filename, index)):
                 index += 1
-            shutil.copy(filename, '%s.%0d' % (filename, index))
+            os.rename(filename, f'{filename}.{index:0d}')
 
 
 def generate_failure(message: str) -> Result:
@@ -422,6 +423,10 @@ def fix_permissions(path: PathLike, user: str) -> bool:
         )
         # delete temporary directory
         if result.returncode == 0:
+            # with tempfile.TemporaryDirectory() as blank_dir:
+            #     subprocess.run(
+            #         ['rsync', '-aP', '--delete', f'{blank_dir}/', str(tmp_path)],
+            #     )
             shutil.rmtree(tmp_path)
             return True
 

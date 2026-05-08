@@ -36,9 +36,11 @@ def plot(data, plot_type='linespoints', style='full-height'):
     commands = "\n".join(extras + [
         "set term dumb 110 {}".format(height), "plot " + ',\n\t'.join(plots),  plot_data,  "exit"
     ])
-
-    process = subprocess.Popen(['gnuplot'], stdin=subprocess.PIPE, stdout=subprocess.PIPE)
-    output, errors = process.communicate(commands.encode('utf8'))
+    try:
+        process = subprocess.Popen(['gnuplot'], stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+        output, errors = process.communicate(commands.encode('utf8'))
+    except (FileNotFoundError, subprocess.SubprocessError) as err:
+        output = str(err)
     return output  # .decode('utf-8')
 
 

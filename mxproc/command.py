@@ -1,4 +1,5 @@
 import asyncio
+import os
 import subprocess
 import time
 from datetime import datetime, timedelta
@@ -104,9 +105,10 @@ def run_command(cmd, desc: str = "", logfile: Union[str, Path] = "commands.log",
     :param sync: Run synchronously, default False
     :param check_files: At the end of the command these files must exist, otherwise the command failed
     """
-
     command = Command(cmd, desc=desc, logfile=logfile, check_files=check_files)
     if sync:
         command.run_sync()
     else:
         command.run_async()
+
+    os.scandir(os.getcwd())    # refresh the file cache

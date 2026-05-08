@@ -263,7 +263,6 @@ class Analysis(ABC):
         :param expt: the Experiment to check
         :param step: Analysis step to tests
         """
-
         if step.name in self.results[expt.identifier]:
             return self.results[expt.identifier][step.name]
 
@@ -320,7 +319,8 @@ class Analysis(ABC):
                 # select the next step in the workflow
                 step = None if single else WORKFLOWS[self.workflow].get(step)
         finally:
-            fix_permissions(self.options.directory, self.args.owner)
+            os.scandir(self.options.directory)  # reload directory cache
+            #fix_permissions(self.options.directory, self.args.owner)
 
         used_time = time.strftime('%H:%M:%S', time.gmtime(time.time() - start_time))
         logger.banner(f'Processing Duration: {used_time}', line='-')

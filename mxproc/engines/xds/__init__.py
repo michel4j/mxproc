@@ -146,15 +146,14 @@ class XDSAnalysis(Analysis):
         if args.spacegroup:
             extras.update(lattice=Lattice(spacegroup=args.spacegroup))
 
+        if args.owner:
+            extras.update(owner=args.owner)
+
         if args.cluster:
             extras.update(cluster={'mode': "SLURM", **args.cluster})
         elif default_cluster := os.getenv("CLUSTER_SPECS"):
             cluster_specs = parse_cluster(default_cluster)
             extras.update(cluster={'mode': "SLURM", **cluster_specs})
-
-        if args.owner:
-            extras.update(owner=args.owner)
-
         elif os.environ.get("CLUSTER_NODES"):
             node_list = os.environ.get("CLUSTER_NODES", "").split()
             node_cores = int(os.environ.get("CLUSTER_CORES", cpu_count()))
@@ -223,7 +222,6 @@ class XDSAnalysis(Analysis):
                 run_command(command, desc=f'{experiment.name}: Finding strong spots in images {image_range}')
                 result = Result(state=StateType.SUCCESS, details=XDSParser.parse('COLSPOT.LP'))
                 io.save_spots()
-                backup_files('SPOT.XDS')
             except CommandFailed as err:
 
                 result = generate_failure(f"Command failed: {err}")

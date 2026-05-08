@@ -1,5 +1,5 @@
 from typing import Tuple, Sequence
-from mxproc.common import Result, StateType, generate_failure, show_warnings
+from mxproc.common import Result, StateType, generate_failure, show_warnings, backup_files
 from mxproc.command import run_command, CommandFailed
 from mxproc.xtal import Experiment
 
@@ -17,6 +17,7 @@ def autoindex_trial(experiment: Experiment, manager, trial: int) -> Tuple[Result
     """
 
     parameters = io.XDSParameters(**manager.get_parameters())
+    backup_files('SPOT.XDS')
     io.filter_spots(min_sigma=manager.min_sigma, max_sigma=manager.max_sigma)
     io.create_input_file(('IDXREF',), experiment, parameters)
     try:

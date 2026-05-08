@@ -1,3 +1,4 @@
+import os
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Sequence, Tuple, Union
@@ -182,6 +183,9 @@ def load_experiment(filename: Union[str, Path]) -> Sequence[Experiment]:
 
     :param filename: Full path to dataset image to import
     """
+
+    data_path = Path(filename).parent
+    os.scandir(str(data_path))  # update directory file cache
 
     dset = DataSet.new_from_file(filename)
     if dset.index != dset.series[0]:
