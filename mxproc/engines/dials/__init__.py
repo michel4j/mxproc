@@ -28,7 +28,7 @@ class DIALSAnalysis(Analysis):
         results = {}
         for experiment in self.experiments:
             os.chdir(self.options.working_directories[experiment.identifier])
-            image_range = '{}-{}'.format(experiment.frames[0][0], experiment.frames[-1][1])
+            image_range = f'{experiment.frames[0][0]}-{experiment.frames[-1][1]}'
             run_command('dials.find_spots imported.expt', desc=f'{experiment.name}: Finding strong spots in images {image_range}')
             results[experiment.identifier] = DIALSParser.parse('spots.yml')
 

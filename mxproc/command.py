@@ -53,7 +53,6 @@ class Command:
         """
 
         with open(self.outfile, 'a') as stdout:
-            start_time = time.time()
             start_str = datetime.now().strftime('%H:%M:%S')
             bar_fmt = "{desc: <83}{elapsed}{postfix}"
             with tqdm(desc=f"{start_str} {self.label} ... ", miniters=1, leave=False, bar_format=bar_fmt) as spinner:
@@ -61,7 +60,6 @@ class Command:
                 while proc.returncode is None:
                     spinner.update()
                     await asyncio.sleep(.05)
-            elapsed = time.time() - start_time
 
             if proc.returncode != 0 or not files_exist(self.check_files):
                 logger.error_value(self.label, "[FAILED]", spacer=' ')
@@ -78,8 +76,7 @@ class Command:
             logger.info_value(f"{self.label}", '.')
             with open(self.outfile, 'a') as stdout:
                 output = subprocess.check_output(self.shell_cmd, shell=True)
-                stdout.write(output)
-
+                stdout.write(output.decode('utf-8'))
         except (subprocess.CalledProcessError, CommandFailed) as err:
             raise CommandFailed(f"{err}")
 
