@@ -25,7 +25,7 @@ def _run_application(description: str, step: StepType | None = None) -> int:
     return app.run()
 
 
-# Entrypoints corresponding to files in bin/
+# entrypoints corresponding to files in bin/
 
 def auto_index() -> int:
     """Run the auto.index console entrypoint using sys.argv."""
@@ -67,7 +67,7 @@ def auto_symmetry() -> int:
     return _run_application("Determine and Apply Symmetry", StepType.SYMMETRY)
 
 
-# Functions copied from bin/auto.xds to provide the same behaviour when called as a package function
+# Functions copied from bin/auto.xds to provide the same behavior when called as a package function
 
 def tail(file_path: Path, sentinel: str = "COMMAND-DONE", interval: float = 0.1):
     """

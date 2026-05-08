@@ -13,7 +13,7 @@ from mxio import XYPair
 import numpy
 import vg
 
-from mxproc import Analysis, reporting
+from mxproc import Analysis, reporting, parse_cluster
 from mxproc.command import run_command, CommandFailed
 from mxproc.common import StateType, StepType, backup_files, show_warnings, find_lattice, short_path
 from mxproc.common import generate_failure, Result, select_resolution, ScoreManager, summarize_ranges
@@ -145,8 +145,16 @@ class XDSAnalysis(Analysis):
 
         if args.spacegroup:
             extras.update(lattice=Lattice(spacegroup=args.spacegroup))
+
         if args.cluster:
             extras.update(cluster={'mode': "SLURM", **args.cluster})
+        elif default_cluster := os.getenv("CLUSTER_SPECS"):
+            cluster_specs = parse_cluster(default_cluster)
+            extras.update(cluster={'mode': "SLURM", **cluster_specs})
+
+        if args.owner:
+            extras.update(owner=args.owner)
+
         elif os.environ.get("CLUSTER_NODES"):
             node_list = os.environ.get("CLUSTER_NODES", "").split()
             node_cores = int(os.environ.get("CLUSTER_CORES", cpu_count()))

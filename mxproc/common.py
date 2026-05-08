@@ -1,8 +1,14 @@
 from __future__ import annotations
 
+import argparse
+import getpass
 import json
 import os
+import pwd
+import re
 import shutil
+import subprocess
+from os import PathLike
 from dataclasses import dataclass, field
 from enum import Enum, IntEnum, IntFlag
 from itertools import tee
@@ -385,3 +391,52 @@ class WorkingDir:
 
     def __exit__(self, etype, value, traceback):
         os.chdir(self.origin)
+
+
+def fix_permissions(path: PathLike, user: str) -> bool:
+    """
+    Fix directory permissions after the command is completed
+    :param path: Path to directory to fix permissions
+    :param user: user who should own the output files from the command
+    :return: True if permissions were changed, False otherwise
+    """
+    path = Path(path)
+
+    target = pwd.getpwnam(user)
+    fix_perms = False
+
+    for item in path.iterdir():
+        if item.stat().st_uid != target.pw_uid:
+            fix_perms = True
+            break
+
+    if fix_perms:
+        # rename current path
+        tmp_path = path.rename(path.with_stem(f'.{path.name}'))
+
+        # rsync renamed contents to original path
+        result = subprocess.run(
+            ['rsync', '-a', '--no-owner', '--no-group', '--no-perms', f'{tmp_path}/', str(path)],
+            # Since running as user, no need to specify uid and gid
+            # user=target.pw_uid, group=target.pw_gid
+        )
+        # delete temporary directory
+        if result.returncode == 0:
+            shutil.rmtree(tmp_path)
+            return True
+
+    return False
+
+
+def parse_cluster(value):
+    pattern = re.compile(r'(?P<partition>\w+):(?P<host>[^,]+),(?P<nodes>\d+),(?P<cpus>\d+)$')
+    m = pattern.match(value)
+    if not m:
+        raise argparse.ArgumentTypeError(f'Cluster format was `{value}` should be "partition:host,nodes,cores"')
+    raw = m.groupdict()
+    return {
+        'partition': raw['partition'],
+        'host': raw['host'],
+        'nodes': int(raw['nodes']),
+        'cpus': int(raw['cpus'])
+    }

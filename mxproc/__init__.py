@@ -3,10 +3,10 @@ from __future__ import annotations
 import argparse
 import gzip
 import os
-import re
 import time
 import importlib
 import logging
+import getpass
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
@@ -14,13 +14,16 @@ from datetime import datetime
 
 from importlib.metadata import version, PackageNotFoundError
 from pathlib import Path
-from typing import Sequence, Dict, Tuple
+from typing import Sequence, Dict, Tuple, Any
 
 import yaml
 
 from mxproc import log
 from mxproc.command import CommandFailed
-from mxproc.common import StepType, InvalidAnalysisStep, StateType, Result, Workflow, logistic, parse_ranges, WorkingDir
+from mxproc.common import (
+    StepType, InvalidAnalysisStep, StateType, Result, Workflow, logistic, parse_ranges, WorkingDir, fix_permissions,
+    parse_cluster
+)
 from mxproc.xtal import load_multiple, Experiment, Beam
 from mxproc.log import logger
 
@@ -34,7 +37,6 @@ try:
     __version__ = version("mxproc")
 except PackageNotFoundError:
     __version__ = "Dev"
-
 
 # Links Analysis steps to the next step in the sequence
 WORKFLOWS = {
@@ -79,28 +81,13 @@ class AnalysisOptions:
             setattr(self, key, value)
 
 
-# cluster arguments
-def valid_cluster(value):
-    pattern = re.compile(r'(?P<partition>\w+):(?P<host>[^,]+),(?P<nodes>\d+),(?P<cpus>\d+)$')
-    m = pattern.match(value)
-    if not m:
-        raise argparse.ArgumentTypeError(f'Cluster format was `{value}` should be "partition:host,nodes,cores"')
-    raw = m.groupdict()
-    return {
-        'partition': raw['partition'],
-        'host': raw['host'],
-        'nodes': int(raw['nodes']),
-        'cpus': int(raw['cpus'])
-    }
-
-
 class Analysis(ABC):
     experiments: Sequence[Experiment]
     options: AnalysisOptions
-    results: dict   # results for each experiment keyed by experiment identifier
+    results: dict  # results for each experiment keyed by experiment identifier
     settings: dict  # Settings dictionary can be used for saving and recovering non-experiment specific information
     workflow: Workflow
-    methods: dict   # Dictionary mapping steps to corresponding method
+    methods: dict  # Dictionary mapping steps to corresponding method
     args: argparse.Namespace  # Contains parameters passed in through the command line.
 
     prefix: str = 'proc'
@@ -311,27 +298,29 @@ class Analysis(ABC):
         sub_header = f"{datetime.now().isoformat()} {self.workflow.desc()} [{len(self.experiments):d} dataset(s)]"
         logger.banner(header)
         logger.banner(sub_header, overline=False, line='-')
+        try:
+            while step is not None:
+                # always go back to top-level working directory before running step
+                if self.options.directory.exists():
+                    os.chdir(self.options.directory)
 
-        while step is not None:
-            # always go back to top-level working directory before running step
-            if self.options.directory.exists():
-                os.chdir(self.options.directory)
+                step_method = self.methods.get(step)
+                try:
+                    logger.info_value(step.desc(), '', spacer='-')
+                    results = step_method()
+                except CommandFailed as err:
+                    logger.error(f'Failed at {step.name}: {err}. Aborting!')
+                    exit_code = 1
+                    break
+                else:
+                    # REPORTING step does not have results
+                    if step != StepType.REPORT and results:
+                        self.update_result(results, step)
 
-            step_method = self.methods.get(step)
-            try:
-                logger.info_value(step.desc(), '', spacer='-')
-                results = step_method()
-            except CommandFailed as err:
-                logger.error(f'Failed at {step.name}: {err}. Aborting!')
-                exit_code = 1
-                break
-            else:
-                # REPORTING step does not have results
-                if step != StepType.REPORT and results:
-                    self.update_result(results, step)
-
-            # select the next step in the workflow
-            step = None if single else WORKFLOWS[self.workflow].get(step)
+                # select the next step in the workflow
+                step = None if single else WORKFLOWS[self.workflow].get(step)
+        finally:
+            fix_permissions(self.options.directory, self.args.owner)
 
         used_time = time.strftime('%H:%M:%S', time.gmtime(time.time() - start_time))
         logger.banner(f'Processing Duration: {used_time}', line='-')
@@ -455,10 +444,13 @@ class Application:
         self.parser.add_argument('--beam-fwhm', type=float, nargs=2, help="Beam FWHM")
         self.step = step
 
-        self.parser.add_argument('--cluster', type=valid_cluster, help='Cluster parameters: partition:user@hostname,nodes,cpus')
+        self.parser.add_argument(
+            '--cluster', type=parse_cluster, help='Cluster parameters: partition:user@hostname,nodes,cpus'
+        )
+        self.parser.add_argument('--owner', type=str, default=getpass.getuser(), help='Username of the Owner of output files')
 
     @staticmethod
-    def get_engine(args: argparse.Namespace) -> Analysis:
+    def get_engine(args: argparse.Namespace) -> Any:
         """
         Determine backend engine Analysis class based on engine name
         :param args:  Parsed arguments
@@ -487,4 +479,3 @@ class Application:
         if proc is not None:
             return proc.run(step=self.step, single=args.single)
         return 1
-
