@@ -420,23 +420,20 @@ def fix_permissions(path: PathLike, user: str) -> bool:
             ['rsync', '-a', '--no-owner', '--no-group', '--no-perms', f'{tmp_path}/', str(path)],
             # Since running as user, no need to specify uid and gid
             # user=target.pw_uid, group=target.pw_gid,
-            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+            capture_output=True, check=False
         )
         # delete temporary directory
         if result.returncode == 0:
             with tempfile.TemporaryDirectory() as blank_dir:
-                try:
-                    subprocess.run(
-                        ['rsync', '-aP', '--delete', f'{blank_dir}/', str(tmp_path)],
-                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
-                    )
-                    os.scandir(tmp_path)
-                    subprocess.run(
-                        ['rmdir', str(tmp_path)],
-                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
-                    )
-                except subprocess.CalledProcessError:
-                    pass
+                subprocess.run(
+                    ['rsync', '-aP', '--delete', f'{blank_dir}/', str(tmp_path)],
+                    capture_output=True, check=False
+                )
+                os.scandir(tmp_path)
+                subprocess.run(
+                    ['rmdir', str(tmp_path)],
+                    capture_output=True, check=False
+                )
             return True
 
     return False
