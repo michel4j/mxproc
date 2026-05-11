@@ -184,7 +184,9 @@ def load_experiment(filename: Union[str, Path]) -> Sequence[Experiment]:
     :param filename: Full path to dataset image to import
     """
 
-    data_path = Path(filename).parent
+    data_path = Path(filename)
+    while not data_path.is_dir():
+        data_path = data_path.parent
     os.scandir(str(data_path))  # update directory file cache
 
     dset = DataSet.new_from_file(filename)
