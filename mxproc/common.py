@@ -5,6 +5,7 @@ import getpass
 import json
 import os
 import pwd
+import time
 import re
 import shutil
 import subprocess
@@ -429,11 +430,15 @@ def fix_permissions(path: PathLike, user: str) -> bool:
                     ['rsync', '-aP', '--delete', f'{blank_dir}/', str(tmp_path)],
                     capture_output=True, check=False
                 )
-                os.scandir(tmp_path)
-                subprocess.run(
-                    ['rmdir', str(tmp_path)],
-                    capture_output=True, check=False
-                )
+                # try removing the old tree four times in half a second
+                max_retries = 5
+                while tmp_path.exists() and max_retries > 0:
+                    try:
+                        shutil.rmtree(tmp_path)
+                    except Exception:
+                        pass
+                    max_retries -= 1
+                    time.sleep(0.1)
             return True
 
     return False
