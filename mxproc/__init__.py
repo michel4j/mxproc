@@ -320,7 +320,7 @@ class Analysis(ABC):
                 step = None if single else WORKFLOWS[self.workflow].get(step)
         finally:
             os.scandir(self.options.directory)  # reload directory cache
-            #fix_permissions(self.options.directory, self.args.owner)
+            fix_permissions(self.options.directory, self.args.owner)
 
         used_time = time.strftime('%H:%M:%S', time.gmtime(time.time() - start_time))
         logger.banner(f'Processing Duration: {used_time}', line='-')
