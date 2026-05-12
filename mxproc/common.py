@@ -437,11 +437,12 @@ def fix_permissions(path: PathLike,) -> bool:
                 max_retries = 5
                 while tmp_path.exists() and max_retries > 0:
                     try:
+                        os.scandir(tmp_path)
                         shutil.rmtree(tmp_path)
                     except Exception:
                         pass
                     max_retries -= 1
-                    time.sleep(0.1)
+                    time.sleep(0.2)
             return True
 
     return False
