@@ -146,9 +146,6 @@ class XDSAnalysis(Analysis):
         if args.spacegroup:
             extras.update(lattice=Lattice(spacegroup=args.spacegroup))
 
-        if args.owner:
-            extras.update(owner=args.owner)
-
         if args.cluster:
             extras.update(cluster={'mode': "SLURM", **args.cluster})
         elif default_cluster := os.getenv("CLUSTER_SPECS"):

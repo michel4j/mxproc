@@ -64,7 +64,6 @@ class XDSParameters:
     refine_integrate: Sequence[XDSRefinement] = ('POSITION', 'BEAM', 'ORIENTATION')
 
     cluster: dict = field(default_factory=dict)
-    owner: str | None = None
 
 
 def create_input_file(jobs: Sequence[XDSJob], experiment: Experiment, parameters: XDSParameters) -> JobParameters:

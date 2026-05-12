@@ -395,16 +395,19 @@ class WorkingDir:
         os.chdir(self.origin)
 
 
-def fix_permissions(path: PathLike, user: str) -> bool:
+def fix_permissions(path: PathLike,) -> bool:
     """
     Fix directory permissions after the command is completed
     :param path: Path to directory to fix permissions
-    :param user: user who should own the output files from the command
     :return: True if permissions were changed, False otherwise
     """
     path = Path(path)
+    owner = pwd.getpwnam(path.owner(follow_symlinks=True))
+    target = pwd.getpwnam(getpass.getuser())
 
-    target = pwd.getpwnam(user)
+    if target.pw_uid != owner.pw_uid:
+        return False
+
     fix_perms = False
 
     for item in path.iterdir():

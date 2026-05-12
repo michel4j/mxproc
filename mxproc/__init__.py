@@ -320,7 +320,7 @@ class Analysis(ABC):
                 step = None if single else WORKFLOWS[self.workflow].get(step)
         finally:
             os.scandir(self.options.directory)  # reload directory cache
-            fix_permissions(self.options.directory, self.args.owner)
+            fix_permissions(self.options.directory)
 
         used_time = time.strftime('%H:%M:%S', time.gmtime(time.time() - start_time))
         logger.banner(f'Processing Duration: {used_time}', line='-')
@@ -447,7 +447,6 @@ class Application:
         self.parser.add_argument(
             '--cluster', type=parse_cluster, help='Cluster parameters: partition:user@hostname,nodes,cpus'
         )
-        self.parser.add_argument('--owner', type=str, default=getpass.getuser(), help='Username of the Owner of output files')
 
     @staticmethod
     def get_engine(args: argparse.Namespace) -> Any:
