@@ -402,7 +402,7 @@ def fix_permissions(path: PathLike,) -> bool:
     :return: True if permissions were changed, False otherwise
     """
     path = Path(path)
-    owner = pwd.getpwnam(path.owner(follow_symlinks=True))
+    owner = pwd.getpwnam(path.owner())
     target = pwd.getpwnam(getpass.getuser())
 
     if target.pw_uid != owner.pw_uid:
