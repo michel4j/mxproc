@@ -10,19 +10,20 @@ from mxproc import Application
 from mxproc.common import StepType
 
 
-def _run_application(description: str, step: StepType | None = None) -> int:
+def _run_application(description: str, step: StepType | None = None, single: bool = False) -> int:
     """
     Helper to instantiate and run an Application. Uses `sys.argv` for CLI arguments.
 
     :param description: description passed to Application
-    :param step: optional StepType to initialise Application with. If None use default.
+    :param step: optional StepType to initialize Application with. If None use default.
+    :param single: True to run only a single step, False to run all subsequent steps
     :return: exit code from Application.run()
     """
     if step is None:
         app = Application(description=description)
     else:
         app = Application(description=description, step=step)
-    return app.run()
+    return app.run(single=single)
 
 
 # entrypoints corresponding to files in bin/
@@ -34,7 +35,7 @@ def auto_index() -> int:
 
 def auto_init() -> int:
     """Run the auto.init console entrypoint using sys.argv."""
-    return _run_application('Initialize a dataset processing', StepType.INITIALIZE)
+    return _run_application('Initialize a dataset processing', StepType.INITIALIZE, single=True)
 
 
 def auto_integrate() -> int:
@@ -54,7 +55,7 @@ def auto_scale() -> int:
 
 def auto_spots() -> int:
     """Run the auto.spots console entrypoint using sys.argv."""
-    return _run_application("Find Strong Spots", StepType.SPOTS)
+    return _run_application("Find Strong Spots", StepType.SPOTS, single=True)
 
 
 def auto_strategy() -> int:

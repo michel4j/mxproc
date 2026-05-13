@@ -468,13 +468,14 @@ class Application:
             logger.exception(err)
         return proc
 
-    def run(self):
+    def run(self, single: bool = False):
         """
         Parse arguments and run analysis application
+        :param single: Run only one step
         """
         log.log_to_console(logging.DEBUG)
         args = self.parser.parse_args()
         proc = self.get_engine(args)
         if proc is not None:
-            return proc.run(step=self.step, single=args.single)
+            return proc.run(step=self.step, single=(single or args.single))
         return 1
