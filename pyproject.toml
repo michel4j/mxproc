@@ -1,6 +1,6 @@
 [project]
 name = "mxproc"
-dynamic = []
+dynamic = ["version"]
 license = "MIT"
 description = "MX Automated Data Processing Pipeline"
 readme = "README.md"
@@ -26,7 +26,7 @@ dependencies = [
     "scipy"
 ]
 requires-python = ">=3.10,<4.0"
-version = "2025.10.16"
+
 
 [project.urls]
 Homepage = "https://github.com/michel4j/mxproc"
@@ -37,6 +37,7 @@ Issues = "https://github.com/michel4j/mxproc/issues"
 packages = [
     { include = "mxproc", from = "." },
 ]
+version = "0.0.0"
 
 [tool.poetry.scripts]
 "auto.init" = "mxproc.scripts:auto_init"
@@ -57,6 +58,6 @@ build-backend = "poetry_dynamic_versioning.backend"
 poetry-dynamic-versioning = { version = ">=1.0.0,<2.0.0", extras = ["plugin"] }
 
 [tool.poetry-dynamic-versioning]
-enable = false
+enable = true
 vcs = "git"
 format = "{base}.{revision}{distance}"
