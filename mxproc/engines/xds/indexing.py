@@ -39,7 +39,7 @@ def autoindex_trial(experiment: Experiment, manager, trial: int) -> Tuple[Result
             kw['spot_range'] = result.details['spots']['best_range']
 
         request_retry, retry_messages = manager.update_parameters(
-            result.flags, **kw
+            IndexProblem(result.flags), **kw
         )
 
     return result, request_retry, retry_messages
