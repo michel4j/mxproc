@@ -280,6 +280,7 @@ class XDSAnalysis(Analysis):
         for experiment in self.experiments:
             os.chdir(self.options.working_directories[experiment.identifier])
             index_result = self.get_step_result(experiment, StepType.INDEX)
+            if not index_result: continue
             lattice = index_result.get('symmetry_lattice')
             spot_range = [(r[0], r[1]) for r in experiment.frames]
             io_options = {
