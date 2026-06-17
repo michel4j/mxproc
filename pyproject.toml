@@ -49,7 +49,7 @@ version = "0.0.0"
 "auto.scale" = "mxproc.scripts:auto_scale"
 "auto.strategy" = "mxproc.scripts:auto_strategy"
 "auto.symmetry" = "mxproc.scripts:auto_symmetry"
-"auto.signal" = "mxproc.programs:process_signal"
+"auto.signal" = "mxproc.programs.dozor:process_signal"
 
 [build-system]
 requires = ["poetry-core>=2.0.0,<3.0.0", "poetry-dynamic-versioning>=1.0.0,<2.0.0"]
