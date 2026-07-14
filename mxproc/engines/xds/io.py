@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import os
+import re
 import shutil
+from io import StringIO
 from pathlib import Path
 from dataclasses import dataclass, field
 from typing import Union, Literal, Tuple, Sequence
@@ -268,7 +270,19 @@ def save_spots():
     Make a backup of SPOT.XDS in numpy format to be used for indexing
     """
 
-    spots = numpy.loadtxt('SPOT.XDS')
+    # Some XDS.SPOT files are badly formatted. Fix them here.
+    # assumes that all floats are stated to a maximum of 2 decimal places
+    patt = re.compile(
+        r'^\s*(\d+\.\d{2})\s*(\d+\.\d{2})\s*(\d+\.\d{2})\s*(\d+\.\d*)\s*(\s*-?\d+\s*-?\d+\s*-?\d+)?',
+        re.MULTILINE
+    )
+    with open('SPOT.XDS', 'rt', encoding='utf-8') as infile:
+        data = infile.read()
+        lines = patt.findall(data)
+        fixed_data = '\n'.join([' '.join(line) for line in lines])
+
+    spot_stream = StringIO(fixed_data)
+    spots = numpy.loadtxt(spot_stream)
     numpy.save('spots', spots)
 
 
