@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import os
+import re
 import shutil
+from io import StringIO
 from pathlib import Path
 from dataclasses import dataclass, field
 from typing import Union, Literal, Tuple, Sequence
@@ -267,8 +269,7 @@ def save_spots():
     """
     Make a backup of SPOT.XDS in numpy format to be used for indexing
     """
-
-    spots = numpy.loadtxt('SPOT.XDS')
+    spots = numpy.loadtxt('SPOT.XDS', skiprows=1)
     numpy.save('spots', spots)
 
 
