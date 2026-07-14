@@ -858,7 +858,7 @@ class XDSAnalysis(Analysis):
         logger.info_value(f'- Predicted Multiplicity:', f'{multiplicity:0.1f}')
         logger.info_value(f'- Crystal Mosaicity:', f'{mosaicity:0.2f}')
         logger.info_value(f'- Maximum Delta to avoid overlaps', f'{max_delta:0.2f}°')
-        logger.info_value(f'- Resolution of Diffraction (99-th percentile)', f'{observed_resolution:0.2f} Å')
+        logger.info_value(f'- Resolution of Diffraction', f'{observed_resolution:0.2f} Å')
         logger.info_value(f'- Recommended High-Resolution Limit', f'{desired_resolution:0.2f} Å')
         logger.info_value(
             f'- Maximum Exposure Rate (recommended, worst-case)',

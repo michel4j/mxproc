@@ -1,6 +1,7 @@
 import numpy
 import pandas
-from matplotlib import pyplot as plt
+
+from mxproc.programs import dozor
 
 MAX_DETECTOR_COVERAGE = 0.85    # Diffraction should cover up to 85% of the detector surface
 
@@ -30,7 +31,11 @@ def determine_resolution(expt):
     df['resolution'] = expt.wavelength / (2 * numpy.sin(df['angle']))
     df['inv_d_sqr'] = 1/df['resolution']**2
 
-    observed_d = numpy.percentile(df['resolution'], 1)
+    bragg_d = numpy.percentile(df['resolution'], 0.99)
+    resolutions = dozor.data_resolution(expt)
+    resolutions.append(float(bragg_d))
+    observed_d = min(resolutions)
+
     desired_d = ((observed_d**-2)/MAX_DETECTOR_COVERAGE)**-0.5
 
     return {

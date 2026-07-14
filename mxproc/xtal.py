@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -145,6 +147,7 @@ class Experiment:
     detector: str
     wavelength: float
     distance: float
+    exposure: float
     frames: Sequence[Tuple[int, int]]
     template: str
     glob: str
@@ -155,7 +158,7 @@ class Experiment:
     detector_origin: XYPair
     geometry: Geometry
     cutoff_value: float
-    sensor_thickness: float
+    sensor_thickness: float | None
     start_angle: float = 0.0
     lattice: Lattice = field(default_factory=Lattice)
 
@@ -190,6 +193,7 @@ def load_experiment(filename: Union[str, Path]) -> Sequence[Experiment]:
     os.scandir(str(data_path))  # update directory file cache
 
     dset = DataSet.new_from_file(filename)
+    dset.setup()
     if dset.index != dset.series[0]:
         dset.get_frame(index=dset.series[0])  # set to first frame so we get proper start angle
 
@@ -201,11 +205,6 @@ def load_experiment(filename: Union[str, Path]) -> Sequence[Experiment]:
         ])
     else:
         wildcard = dset.glob
-        # angles = numpy.array([
-        #     (index, frame.start_angle)
-        #     for index in dset.series
-        #     for frame in (dset.get_frame(index),)
-        # ])
         angles = numpy.array([
             (index, dset.frame.start_angle + (index - 1) * dset.frame.delta_angle)
             for index in dset.series
@@ -229,6 +228,7 @@ def load_experiment(filename: Union[str, Path]) -> Sequence[Experiment]:
             detector=dset.frame.detector,
             wavelength=dset.frame.wavelength,
             distance=dset.frame.distance,
+            exposure=dset.frame.exposure,
             frames=compress_series(sweep[:, 0]),
             template=dset.glob,
             two_theta=dset.frame.two_theta,

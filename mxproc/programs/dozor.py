@@ -1,15 +1,15 @@
 from __future__ import annotations
 
-import argparse
 import os
+import shutil
 import subprocess
-import time
 from pathlib import Path
-
-from mxio import DataSet
 from parsefire import parser
+from mxproc import Experiment
 
-XDS_ZCBF_LIB = os.getenv('XDS_ZCBF_LIB', '/cmcf_apps/xtal/dozor/xds-zcbf.so')
+
+CBF_LIB = os.getenv('XDS_ZCBF_LIB', shutil.which('xds-zcbf.so'))
+
 
 DOZOR_DATA = """!
 detector {detector}
@@ -31,83 +31,56 @@ oscillation_range {delta_angle:0.4f}
 image_step 1
 starting_angle {start_angle:0.4f}
 first_image_number {index}
-number_images 1
+number_images {num_images}
 name_template_image {name_template}
 end
 """
 
-DOZOR_ENTRY = "<int:index> | <int:bragg_spots> <float:score> <float:resolution> <float:avg_signal>"
-
 DOZOR_OUTPUT = {
-    "root": {
-        "sections": {
-            "summary": {
-                "fields": [DOZOR_ENTRY]
-            }
-        }
-    }
+    "table": [
+        "<int:index> | <int:bragg_spots> <float:score> <float:resolution> <float:avg_signal>"
+    ]
 }
 
 
-def data_signal(frame_path: str | Path) -> dict:
+def data_resolution(expt: Experiment) -> list[float]:
     """
     Perform signal strength analysis on a file
-    :param frame_path: full path to file
-    :return: Dictionary of results
+    :param expt: full path to file
+    :return: list of dictionary scores per image
     """
-    result = {
-        'ice_rings': 0, 'resolution': 50, 'total_spots': 0, 'bragg_spots': 0, 'signal_avg': 0, 'signal_min': 0,
-        'signal_max': 0, 'score': 0.0
-    }
 
-    start_time = time.time()
-    dat_file = Path(frame_path).with_suffix('.dat')
-    dset = DataSet.new_from_file(frame_path)
-    detector = dset.frame.detector.replace('Dectris', '').replace(' ', '').strip().lower()
+    detector = expt.detector.replace('Dectris', '').replace(' ', '').strip().lower()
+    scores = []
+    for start, end in expt.frames:
+        num_images = end - start
+        dat_file = Path(f'{expt.name}-{start}.dat')
+        with open(dat_file, 'wt') as handle:
+            handle.write(DOZOR_DATA.format(
+                zcbf_lib=CBF_LIB or '',
+                detector=detector,
+                x_size=expt.detector_size.x,
+                y_size=expt.detector_size.y,
+                pixel_size=expt.pixel_size.x,
+                exposure=expt.exposure,
+                distance=expt.distance,
+                wavelength=expt.wavelength,
+                count_cutoff=expt.cutoff_value,
+                x_center=expt.detector_origin.x,
+                y_center=expt.detector_origin.y,
+                delta_angle=expt.delta_angle,
+                start_angle=expt.start_angle,
+                index=start,
+                num_images=num_images,
+                name_template=str(expt.directory / expt.glob)
+            ))
 
-    with open(dat_file, 'w') as handle:
-        handle.write(DOZOR_DATA.format(
-            zcbf_lib=XDS_ZCBF_LIB,
-            detector=detector,
-            x_size=dset.frame.size.x,
-            y_size=dset.frame.size.y,
-            pixel_size=dset.frame.pixel_size.x,
-            exposure=dset.frame.exposure,
-            distance=dset.frame.distance,
-            wavelength=dset.frame.wavelength,
-            count_cutoff=dset.frame.cutoff_value,
-            x_center=dset.frame.center.x,
-            y_center=dset.frame.center.y,
-            delta_angle=dset.frame.delta_angle,
-            start_angle=dset.frame.start_angle,
-            index=dset.index,
-            name_template=str(dset.directory / dset.glob)
-        ))
-
-    args = ['dozor', str(dat_file)]
-    output = subprocess.check_output(args, stderr=subprocess.STDOUT)
-    info = parser.parse_text(DOZOR_OUTPUT, output.decode('utf-8'))['summary']
-    info['frame_number'] = dset.index
-    info['duration'] = 1000*(time.time() - start_time)
-    result.update(info)
-
-    return result
-
-
-def process_signal() -> int:
-    """
-    Run the functionality previously provided by the standalone `bin/auto.xds` script.
-
-    This function parses `sys.argv` just like the original script and either submits
-    a SLURM job via SSH or runs the command locally.
-    """
-    parser = argparse.ArgumentParser(description="Analyze Frames and estimate resolution.")
-    parser.add_argument("images", type=str, nargs='+', help="Images")
-
-    args = parser.parse_args()
-    results = [
-        data_signal(image)
-        for image in args.images
-    ]
-    print(results)
-    return 0
+        args = ['dozor', str(dat_file)]
+        try:
+            proc = subprocess.run(args, capture_output=True, text=True)
+            info = parser.parse_text(DOZOR_OUTPUT, proc.stdout)
+        except FileNotFoundError:
+            pass
+        else:
+            scores.extend([item['resolution'] for item in info])
+    return scores
