@@ -1387,6 +1387,19 @@ tests = ["check-manifest", "coverage (>=7.4.2)", "defusedxml", "markdown2", "ole
 xmp = ["defusedxml"]
 
 [[package]]
+name = "plotille"
+version = "6.0.5"
+description = "Plot in the terminal using braille dots."
+optional = false
+python-versions = "<4,>=3.10"
+groups = ["main"]
+markers = "sys_platform == \"win32\" or sys_platform == \"emscripten\" or sys_platform != \"win32\" and sys_platform != \"emscripten\""
+files = [
+    {file = "plotille-6.0.5-py3-none-any.whl", hash = "sha256:c35be42f8aa080853904d123894194a5ea7e095bdeb76d7b61fd41c89cdeaeee"},
+    {file = "plotille-6.0.5.tar.gz", hash = "sha256:26d2cef5d4feb8632c9710442ad49fc57f9d5b20881c21ac7954c76208b5600b"},
+]
+
+[[package]]
 name = "poetry-dynamic-versioning"
 version = "1.9.1"
 description = "Plugin for Poetry to enable dynamic versioning based on VCS tags"
@@ -2065,4 +2078,4 @@ files = [
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.10,<4.0"
-content-hash = "8d5112f79d00c6be5d36ba4d9e7f197a619d5ee7160c20dfdae5854b8c3d921e"
+content-hash = "7d34f9b750bb3bfc57eba0b1587095c92faa08f2f0ae479c53b22e2647253b97"

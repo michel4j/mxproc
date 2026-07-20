@@ -4,7 +4,7 @@ root:
 
   sections:
     frames:
-      domains: " IMAGE IER  SCALE     NBKG NOVL NEWALD NSTRONG  NREJ   SIGMAB   SIGMAR(.+?) REFINED PARAMETERS:"
+      domains: "IMAGE IER .*?SIGMAR\n(.+?)\n\n"
       table: " <int:frame:5>   <int:error:1> <float:scale:6> <int:background:8> <int:overloaded:4> <int:ewald:6> <int:strong:7> <int:rejected:5> <float:divergence:8> <float:mosaicity:8>"
 
     batches:
