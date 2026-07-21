@@ -107,8 +107,7 @@ def plot(data, plot_type='lineplot', style='full-height'):
     Generates a text-based plot using plotille.
     """
 
-    os.environ['COLORTERM'] = 'truecolor'
-
+    os.environ['FORCE_COLOR'] = '1'     # Force generation of color plots
     cmap = plt.get_cmap('Set1')
 
     x_label = data['x'][0]
@@ -163,7 +162,6 @@ def plot(data, plot_type='lineplot', style='full-height'):
                 fig.scatter(x_values, y_values, label=y_label, lc=hex_color)
 
         output += fig.show(legend=True)
-    os.environ.pop("COLORTERM", None)
     return output
 
 
