@@ -1,5 +1,6 @@
 import itertools
 import math
+import os
 
 import plotille
 import numpy as np
@@ -106,6 +107,8 @@ def plot(data, plot_type='lineplot', style='full-height'):
     Generates a text-based plot using plotille.
     """
 
+    os.environ['COLORTERM'] = 'truecolor'
+
     cmap = plt.get_cmap('Set1')
 
     x_label = data['x'][0]
@@ -160,7 +163,7 @@ def plot(data, plot_type='lineplot', style='full-height'):
                 fig.scatter(x_values, y_values, label=y_label, lc=hex_color)
 
         output += fig.show(legend=True)
-
+    os.environ.pop("COLORTERM", None)
     return output
 
 
@@ -193,8 +196,14 @@ def text_report(report):
 
                     output.append(table.get_string())
                 elif content.get('kind') in ['lineplot', 'scatterplot']:
-                    plot_text = plot(content['data'], plot_type=content['kind'],
-                                     style=content.get('style', 'full-height'))
+                    try:
+                        plot_text = plot(
+                            content['data'],
+                            plot_type=content['kind'],
+                            style=content.get('style', 'full-height')
+                        )
+                    except ValueError:
+                        plot_text = "\n\n! Error Generating Text Plot !\n\n"
                     output.append(plot_text)
                 if 'notes' in content:
                     output.append(heading('NOTES', 4))
