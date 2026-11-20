@@ -16,109 +16,14 @@ import vg
 
 from mxproc import Analysis, reporting, parse_cluster
 from mxproc.command import CommandFailed
-from mxproc.common import StateType, StepType, backup_files, show_warnings, find_lattice, short_path
+from mxproc.common import StateType, StepType, show_warnings, find_lattice, short_path
 from mxproc.common import generate_failure, Result, select_resolution, ScoreManager, summarize_ranges
 from mxproc.engines.xds import io, stats
-from mxproc.engines.xds.indexing import autoindex_trial
-from mxproc.engines.xds.parser import XDSParser, IndexProblem, pointless
+from mxproc.engines.xds.indexing import auto_index
+from mxproc.engines.xds.parser import XDSParser, pointless
 from mxproc.xtal import Experiment, Lattice, resolution_shells
 from mxproc.programs import raddose
 from mxproc.log import logger
-
-MAX_INDEX_TRIES = 3
-DEFAULT_MIN_SIGMA = 4
-
-
-class IndexParamManager:
-    """
-    Stores and manages Indexing parameters across multiple trials, updating the parameters
-    based on the problems detected during previous interation. Also keeps state so that degrees
-    of suggested parameter changes would be based on the success or failure of previous attempts
-    """
-
-    degrees: dict   # parameter degrees
-    params: dict    # previous parameters
-    min_sigma: float  # Maximum Spot Sigma Value
-    max_sigma: float  # Minimum Spot Sigma Value
-
-    def __init__(
-            self,
-            data_range: Sequence[Tuple[int, int]],
-            spot_range: Sequence[Tuple[int, int]],
-            min_sigma: float = DEFAULT_MIN_SIGMA,
-            max_sigma: float = 100,
-            **extras
-    ):
-        self.degrees = {}
-        self.params = {'spot_range': spot_range, "data_range": data_range, **extras}
-        self.min_sigma = min_sigma
-        self.max_sigma = max_sigma
-
-    def get_degree(self, name: str) -> int:
-        """
-        Update the degree and return its count
-        :param name: name of parameter
-        :return: integer count
-        """
-
-        self.degrees[name] = self.degrees.get(name, 0) + 1
-        return self.degrees[name]
-
-    def get_parameters(self) -> dict:
-        """
-        Return the current parameter dictionary
-        """
-        return self.params
-
-    def update_parameters(
-            self,
-            flags: IndexProblem,
-            spot_range: Sequence[Tuple[int, int]] | None = None
-    ) -> Tuple[bool, Sequence[str]]:
-        """
-        Determine modified indexing parameters based on Indexing problem flags
-        :param flags: integer representing bit-wise combination of flags
-        :param spot_range: Optional spot range parameter
-        :return: indexing parameters, bool True if parameters have changed, sequence of message strings
-        """
-
-        messages = []
-        request_retry = False
-
-        if IndexProblem.INVERTED_AXIS in flags:
-            self.params['invert_spindle'] = True
-            messages.append('Inverting the rotation direction')
-            if self.get_degree('invert_spindle') == 1:
-                request_retry = True
-
-        if IndexProblem.WRONG_SPOT_PARAMETERS in flags:
-            self.params['spot_size'] = 0.5 / self.get_degree('spot_size')
-            messages.append("Reducing accepted spot size & separation")
-            request_retry = True
-
-        if (IndexProblem.LOW_INDEXED_FRACTION | IndexProblem.POOR_SOLUTION) in flags and spot_range:
-            self.params['spot_range'] = [spot_range]
-            messages.append("Changing spot range")
-            request_retry = True
-        elif IndexProblem.POOR_SOLUTION in flags:
-            self.params['error_scale'] = 2.0 * self.get_degree('error_scale')
-            self.params['spot_separation'] = 1.0 - 0.25 ** self.get_degree('spot_separation')
-            self.params['spot_size'] = 1.0 + 0.5 * self.get_degree('spot_size')
-            messages.append("Relaxing quality criteria")
-            request_retry = True
-
-        if IndexProblem.REFINEMENT_FAILED in flags:
-            refinement_flags = ('CELL', 'BEAM', 'ORIENTATION', 'AXIS',)[:-self.get_degree('refine_index')]
-            if len(refinement_flags) > 1:
-                self.params['refine_index'] = refinement_flags
-                messages.append("Adjusting refinement parameters")
-                request_retry = True
-
-        if IndexProblem.INSUFFICIENT_SPOTS in flags:
-            self.min_sigma = DEFAULT_MIN_SIGMA - self.get_degree('min_sigma')
-            request_retry = True
-
-        return request_retry, messages
 
 
 class XDSAnalysis(Analysis):
@@ -247,16 +152,7 @@ class XDSAnalysis(Analysis):
             # ignore lattice
             io_options.pop('lattice', None)
 
-            param_manager = IndexParamManager(**io_options)
-            for trial_number in range(MAX_INDEX_TRIES):
-                backup_files(str(work_dir / 'IDXREF.LP'))
-                result, retry_requested, retry_messages = autoindex_trial(
-                    experiment, param_manager, trial_number, work_dir=work_dir, runner=self.runner
-                )
-                if retry_requested:
-                    show_warnings(f'Retrying Indexing:', retry_messages)
-                else:
-                    break
+            result = auto_index(experiment, io_options, work_dir=work_dir, runner=self.runner)
 
             # show final unit cell parameters
             if result.get('point_groups'):
