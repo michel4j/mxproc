@@ -1,51 +1,54 @@
 import inspect
-import numpy as np
 
-from mxproc import Analysis
-from mxproc.common import StepType, Result
-from mxproc.xtal import Lattice
-from mxproc.xtal import lattice_point_groups
+from mxproc.xtal import Lattice, lattice_point_groups
+
+from .models import (
+    IntegrationReportData,
+    QualitySummary,
+    ReportPayload,
+    ScalingReportData,
+    SymmetryReportData,
+    TwinningReportData,
+)
 
 
-def add_summary_column(report, target, name, wavelength):
-    multiplicity = target.get('quality.summary.observed', 0) / target.get('quality.summary.unique', 1)
-    lattice = target.get("lattice", Lattice())
-    mosaicity = target.get("quality.summary.mosaicity")
-    completeness = target.get("quality.summary.completeness", 0)
-    anom_completeness = target.get("quality.summary.anom_completeness", 0)
+def add_summary_column(
+    report: dict,
+    summary: QualitySummary,
+    lattice: Lattice,
+    name: str,
+    wavelength: float,
+):
+    multiplicity = summary.observed / (summary.unique or 1)
 
     report['data'][0].append(name)
-    report['data'][1].append(f'{target.get("quality.summary.score", 0.0):0.2f}')
+    report['data'][1].append(f'{summary.score:0.2f}')
     report['data'][2].append(f'{wavelength:0.5g} Å')
     report['data'][3].append(f'{lattice.name} ({lattice.spacegroup})')
     report['data'][4].append(f'{lattice.cell_text()}')
-    report['data'][5].append(f'{target.get("quality.summary.resolution", 20.):0.2f} Å')
-    report['data'][6].append(f'{target.get("quality.summary.observed", 0)}')
-    report['data'][7].append(f'{target.get("quality.summary.unique", 0)}')
+    report['data'][5].append(f'{summary.resolution:0.2f} Å')
+    report['data'][6].append(f'{summary.observed}')
+    report['data'][7].append(f'{summary.unique}')
     report['data'][8].append(f'{multiplicity:0.1f}')
-    report['data'][9].append(f'{completeness:0.1f} ({anom_completeness:0.1f}) %')
-    if mosaicity is not None:
-        report['data'][10].append(f'{mosaicity:0.2f}')
+    report['data'][9].append(f'{summary.completeness:0.1f} ({summary.anom_completeness:0.1f}) %')
+    if summary.mosaicity is not None:
+        report['data'][10].append(f'{summary.mosaicity:0.2f}')
     else:
         report['data'][10].append('N/A')
 
-    report['data'][11].append(f'{target.get("quality.summary.i_sigma", -99):0.1f}')
-    report['data'][12].append(f'{target.get("quality.summary.r_meas", -99):0.1f}')
-    report['data'][13].append(f'{target.get("quality.summary.cc_half", -99):0.1f} %')
-    i_sigma_a = target.get("quality.summary.i_sigma_a")
-    if i_sigma_a is not None:
-        report['data'][14].append(f'{i_sigma_a:0.1f}')
+    report['data'][11].append(f'{summary.i_sigma:0.1f}')
+    report['data'][12].append(f'{summary.r_meas:0.1f}')
+    report['data'][13].append(f'{summary.cc_half:0.1f} %')
+    if summary.i_sigma_a is not None:
+        report['data'][14].append(f'{summary.i_sigma_a:0.1f}')
     else:
         report['data'][14].append('N/A')
 
 
-def summary_table(analysis: Analysis):
+def summary_table(payload: ReportPayload) -> dict:
     """
-    Generate the summary table for the provided list of datasets
-    :param analysis: Analysis instance
-    :return: dictionary of table specification
+    Generate the summary table for the provided ReportPayload.
     """
-
     report = {
         'title': 'Data Quality Statistics',
         'kind': 'table',
@@ -79,40 +82,35 @@ def summary_table(analysis: Analysis):
             4. The highest I/Sigma(I) that the experimental setup can produce (Diederichs (2010) 
                Acta Cryst D66, 733-740).
             5. Anomalous completeness is shown in parentheses.
-            6. Space group was {analysis.settings['symmetry_method']}
-            7. Resolution limit was set by {analysis.settings['resolution_method']}
+            6. Space group was {payload.symmetry_method}
+            7. Resolution limit was set by {payload.resolution_method}
         """)
     }
-    res_method = -1
-    scaling = None
-    wavelength = 0
+    last_scaling = None
+    wavelength = 0.0
 
-    for experiment in analysis.experiments:
-
-        scaling = analysis.get_step_result(experiment, StepType.SCALE)
-        symmetry = analysis.get_step_result(experiment, StepType.SYMMETRY)
+    for experiment in payload.experiments:
+        scaling = experiment.scaling
+        symmetry = experiment.symmetry
         wavelength = experiment.wavelength
 
         if not scaling:
             continue
+        last_scaling = scaling
 
-        if analysis.options.merge:
-            add_summary_column(report, symmetry, experiment.name, wavelength)
+        if payload.merge and symmetry is not None:
+            add_summary_column(report, symmetry.summary, symmetry.lattice, experiment.name, wavelength)
         else:
-            add_summary_column(report, scaling, experiment.name, wavelength)
+            add_summary_column(report, scaling.summary, scaling.lattice, experiment.name, wavelength)
 
-    # Add additional combined column
-    if analysis.options.merge and scaling is not None:
-        add_summary_column(report, scaling, 'COMBINED', wavelength)
+    if payload.merge and last_scaling is not None:
+        add_summary_column(report, last_scaling.summary, last_scaling.lattice, 'COMBINED', wavelength)
 
     report['notes'] = inspect.cleandoc(report['notes'])
-
     return report
 
 
-def lattice_table(result: Result):
-    lattices = result.get('lattices', [])
-
+def lattice_table(lattices: list[dict]) -> dict:
     return {
         'title': "Lattice Character",
         'kind': 'table',
@@ -137,7 +135,7 @@ def lattice_table(result: Result):
     }
 
 
-def spacegroup_table(symmetry: Result):
+def spacegroup_table(symmetry: SymmetryReportData) -> dict:
     return {
         'title': "Likely Space-Groups and their Probabilities",
         'kind': 'table',
@@ -145,9 +143,9 @@ def spacegroup_table(symmetry: Result):
                     ['Selected', 'Candidates', 'Space Group Number', 'Probability']
                 ] + [
                     [
-                        '*' if candidate['number'] == symmetry.get('lattice').spacegroup else '',
+                        '*' if candidate['number'] == symmetry.lattice.spacegroup else '',
                         candidate['name'], candidate['number'], candidate['probability']
-                    ] for candidate in symmetry.get('symmetry.candidates', [])
+                    ] for candidate in symmetry.candidates
                 ],
         'header': 'row',
         'notes': (
@@ -161,8 +159,8 @@ def spacegroup_table(symmetry: Result):
     }
 
 
-def standard_error_report(result):
-    errors = result.get('quality.errors')[:-1]
+def standard_error_report(integration: IntegrationReportData) -> dict:
+    errors = integration.errors[:-1]
     return {
         'title': 'Standard Errors of Reflection Intensities by Resolution',
         'content': [
@@ -210,8 +208,8 @@ def standard_error_report(result):
     }
 
 
-def shell_statistics_report(result: Result):
-    stats = result.get('quality.statistics')
+def shell_statistics_report(scaling: ScalingReportData) -> dict:
+    stats = scaling.statistics
     return {
         'title': 'Statistics of Final Reflections by Shell',
         'content': [
@@ -278,9 +276,9 @@ def shell_statistics_report(result: Result):
     }
 
 
-def frame_statistics_report(result: Result):
-    frames = result.get('quality.frames')
-    diffs = result.get('quality.differences')
+def frame_statistics_report(symmetry: SymmetryReportData) -> dict:
+    frames = symmetry.frames
+    diffs = symmetry.differences
     return {
         'title': 'Statistics of Intensities by Frame Number',
         'content': [
@@ -345,8 +343,8 @@ def frame_statistics_report(result: Result):
     }
 
 
-def wilson_report(result: Result):
-    wilson = result.get('quality.twinning.plots')
+def wilson_report(twinning: TwinningReportData) -> dict:
+    wilson = twinning.plots
     return {
         'title': 'Wilson Statistics',
         'content':  [{
@@ -373,17 +371,17 @@ def wilson_report(result: Result):
     }
 
 
-def twinning_report(result: Result):
-    if result.get('quality.twinning.l_zscore'):
+def twinning_report(twinning: TwinningReportData) -> dict:
+    if twinning.l_zscore:
         l_test = {
             'title': 'L-Test for twinning',
             'kind': 'lineplot',
             'data': {
-                'x': ['|L|'] + [row['abs_l'] for row in result.get('quality.twinning.l_test')],
+                'x': ['|L|'] + [row['abs_l'] for row in twinning.l_test],
                 'y1': [
-                    ['Observed'] + [row['observed'] for row in result.get('quality.twinning.l_test')],
-                    ['Twinned'] + [row['twinned'] for row in result.get('quality.twinning.l_test')],
-                    ['Untwinned'] + [row['untwinned'] for row in result.get('quality.twinning.l_test')],
+                    ['Observed'] + [row['observed'] for row in twinning.l_test],
+                    ['Twinned'] + [row['twinned'] for row in twinning.l_test],
+                    ['Untwinned'] + [row['untwinned'] for row in twinning.l_test],
                 ],
                 'y1-label': 'P(L>=1)',
             },
@@ -395,7 +393,7 @@ def twinning_report(result: Result):
                    do not necessarily exclude it.
                 *  The analysis was performed with XTRIAGE:  CCP4 newsletter No. 43, Winter 2005 from the PHENIX 
                    package:  Acta Cryst. D75, 861-877 (2019).
-            """.format(result.get('quality.twinning.l_zscore'), *result.get('quality.twinning.l_statistic')))
+            """.format(twinning.l_zscore, *twinning.l_statistic))
         }
     else:
         return {
@@ -403,7 +401,7 @@ def twinning_report(result: Result):
             'description': 'Twinning analysis could not be performed.'
         }
 
-    if result.get('quality.twinning.laws'):
+    if twinning.laws:
         twin_laws = {
             'title': 'Twin Laws',
             'kind': 'table',
@@ -413,7 +411,7 @@ def twinning_report(result: Result):
                     ] + [
                         [law['operator'], law['type'], law['r_obs'], law['britton_alpha'], law['H_alpha'],
                          law['ML_alpha']]
-                        for law in result.get('quality.twinning.laws')
+                        for law in twinning.laws
                     ],
             'notes': inspect.cleandoc("""
                 *  Please note that the possibility of twin laws only means that the lattice symmetry

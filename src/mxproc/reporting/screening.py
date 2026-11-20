@@ -1,58 +1,33 @@
 import inspect
 from collections import defaultdict
 
-from mxproc import Analysis
-from mxproc.common import StepType
-from mxproc.xtal import Experiment, Lattice
+from .models import ExperimentReportData, StrategyReportData
 
 
-def get_strategy(results):
-    strategy = results['strategy']
-    run = strategy['runs'][0]
-    info = {
-        'attenuation': strategy['attenuation'],
-        'start_angle': run['phi_start'],
-        'total_angle': run['phi_width'] * run['number_of_images'],
-        'resolution': strategy['resolution'],
-        'max_delta': run['phi_width'],
-        'overlaps': run['overlaps'],
-        'exposure_rate': -1,
-    }
-    if run.get('exposure_time', 0) > 0:
-        info['exposure_rate'] = float(round(run['phi_width'], 1)) / round(run['exposure_time'], 1)
-    return info
-
-
-def screening_summary(analysis: Analysis, experiment: Experiment) -> dict:
+def screening_summary(expt: ExperimentReportData) -> dict:
     """
-    Generate the summary table for the provided list of datasets
-    :param analysis: list of dataset dictionaries
-    :param experiment: Experiment to display
-    :return: dictionary of table specification
+    Generate the summary table for the provided screening experiment.
     """
-
-    indexing = analysis.get_step_result(experiment, StepType.INDEX)
-    strategy = analysis.get_step_result(experiment, StepType.STRATEGY)
+    indexing = expt.indexing
+    strategy = expt.strategy
 
     if indexing is None or strategy is None:
         return {}
-    else:
-        lattice = indexing.get("lattice", Lattice())
-        sym_lattice = indexing.get("symmetry_lattice", Lattice())
-        warnings = strategy.get('quality.warnings', [])
-        warning_text = ""
-        if warnings:
-            warning_list = '\n'.join([
-                f' - {warn}\n' for i, warn in enumerate(strategy.get('quality.warnings', []))
-            ])
-            warning_text = f"""
+
+    lattice = indexing.lattice
+    sym_lattice = indexing.symmetry_lattice
+    warnings = strategy.warnings
+    warning_text = ""
+    if warnings:
+        warning_list = '\n'.join([f' - {warn}\n' for warn in warnings])
+        warning_text = f"""
             ---
             **⚠️ WARNINGS ⚠️**
                 
             {warning_list}
             """
-        notes = inspect.cleandoc(
-            f"""
+    notes = inspect.cleandoc(
+        f"""
             1. Data Quality Score for comparing similar data sets. Typically, values >
                0.8 are excellent, > 0.6 are good, > 0.5 are acceptable, > 0.4
                marginal, and &lt; 0.4 are Barely usable. Not comparable to full dataset scores.
@@ -64,55 +39,57 @@ def screening_summary(analysis: Analysis, experiment: Experiment) -> dict:
             
             {warning_text}
             """
-        )
+    )
 
-        return {
-            'title': 'Data Quality Statistics',
-            'kind': 'table',
-            'data': [
-                ['Score¹', f'{strategy.get("quality.score"):0.2f}'],
-                ['Wavelength', f'{experiment.wavelength:0.5g} Å'],
-                ['Compatible Point Groups', ", ".join(indexing.get('point_groups'))],
-                ['Reduced Cell', f'{lattice.cell_text()}'],
-                ['Apparent Point Group²', f'{sym_lattice.name}'],
-                ['Apparent Cell²', f'{sym_lattice.cell_text()}'],
-                ['Mosaicity', f'{strategy.get("quality.mosaicity"):0.2f}°'],
-                ['Diffraction Resolution³', f'{strategy.get("quality.resolution"):0.1f} Å'],
-                ['Profile Error (position)', f'{indexing.get("quality.pixel_error")} px'],
-                ['Profile Error (angle)', f'{indexing.get("quality.angle_error", -1)}°'],
-                ['', ''],
-                ['Expected Resolution', f'{strategy.get("strategy.resolution"):0.1f} Å'],
-                ['Expected Completeness⁴', f'{strategy.get("strategy.completeness"):0.1f} %'],
-                ['Expected Multiplicity⁴', f'{strategy.get("strategy.multiplicity"):0.2f}'],
-            ],
-            'header': 'column',
-            'notes': notes
-        }
+    strat = strategy.strategy
+    return {
+        'title': 'Data Quality Statistics',
+        'kind': 'table',
+        'data': [
+            ['Score¹', f'{strategy.score:0.2f}'],
+            ['Wavelength', f'{expt.wavelength:0.5g} Å'],
+            ['Compatible Point Groups', ", ".join(indexing.point_groups)],
+            ['Reduced Cell', f'{lattice.cell_text()}'],
+            ['Apparent Point Group²', f'{sym_lattice.name}'],
+            ['Apparent Cell²', f'{sym_lattice.cell_text()}'],
+            ['Mosaicity', f'{strategy.mosaicity:0.2f}°'],
+            ['Diffraction Resolution³', f'{strategy.resolution:0.1f} Å'],
+            ['Profile Error (position)', f'{indexing.pixel_error} px'],
+            ['Profile Error (angle)', f'{indexing.angle_error}°'],
+            ['', ''],
+            ['Expected Resolution', f'{strat["resolution"]:0.1f} Å'],
+            ['Expected Completeness⁴', f'{strat["completeness"]:0.1f} %'],
+            ['Expected Multiplicity⁴', f'{strat["multiplicity"]:0.2f}'],
+        ],
+        'header': 'column',
+        'notes': notes,
+    }
 
 
-def screening_strategy(strategy):
+def screening_strategy(strategy: StrategyReportData) -> dict:
+    strat = strategy.strategy
     return {
         'title': 'Suggested Data Acquisition Strategy',
         'kind': 'table',
         'header': 'column',
         'data': [
-            ['Recommended Detector Limit', f'{strategy.get("strategy.max_resolution"):0.2f} Å'],
-            ['Attenuation', f'{strategy.get("strategy.attenuation"):0.2f}%'],
-            ['Start Angle', f'{strategy.get("strategy.start_angle"):0.2f}°'],
-            ['Maximum Delta Angle¹', f'{strategy.get("strategy.max_delta"):0.2f}°'],
-            ['Minimum Total Angle Range²', f'{strategy.get("strategy.total_angle"):0.2f}°'],
+            ['Recommended Detector Limit', f'{strat["max_resolution"]:0.2f} Å'],
+            ['Attenuation', f'{strat["attenuation"]:0.2f}%'],
+            ['Start Angle', f'{strat["start_angle"]:0.2f}°'],
+            ['Maximum Delta Angle¹', f'{strat["max_delta"]:0.2f}°'],
+            ['Minimum Total Angle Range²', f'{strat["total_angle"]:0.2f}°'],
             ['Exposure Rate Avg Dose³', (
-                f'{strategy.get("strategy.exposure_rate"):0.2g}°/s | '
-                f'0.2°/{0.2 / strategy.get("strategy.exposure_rate"):0.2g} s | '
-                f'0.1°/{0.1 / strategy.get("strategy.exposure_rate"):0.2g} s '
+                f'{strat["exposure_rate"]:0.2g}°/s | '
+                f'0.2°/{0.2 / strat["exposure_rate"]:0.2g} s | '
+                f'0.1°/{0.1 / strat["exposure_rate"]:0.2g} s '
             )],
             ['Exposure Rate Low Dose³', (
-                f'{strategy.get("strategy.exposure_rate_worst"):0.2g}°/s | '
-                f'0.2°/{0.2 / strategy.get("strategy.exposure_rate_worst"):0.2g} s | '
-                f'0.1°/{0.1 / strategy.get("strategy.exposure_rate_worst"):0.2g} s '
+                f'{strat["exposure_rate_worst"]:0.2g}°/s | '
+                f'0.2°/{0.2 / strat["exposure_rate_worst"]:0.2g} s | '
+                f'0.1°/{0.1 / strat["exposure_rate_worst"]:0.2g} s '
             )],
-            ['Total Exposure Time', f'{strategy.get("strategy.total_exposure"):0.2g} s'],
-            ['Total Worst Case Exposure Time', f'{strategy.get("strategy.total_exposure_worst"):0.2g} s'],
+            ['Total Exposure Time', f'{strat["total_exposure"]:0.2g} s'],
+            ['Total Worst Case Exposure Time', f'{strat["total_exposure_worst"]:0.2g} s'],
         ],
         'notes': inspect.cleandoc("""
             1. This is the maximum delta-angle to be collected in order to avoid overlaps. Note that
@@ -127,12 +104,12 @@ def screening_strategy(strategy):
     }
 
 
-def screening_completeness(strategy):
+def screening_completeness(strategy: StrategyReportData) -> dict:
     plots = defaultdict(list)
-    for entry in strategy.get('statistics', []):
+    for entry in strategy.statistics:
         total_range = int(entry['end_angle'] - entry['start_angle'])
         plots[total_range].append((entry['start_angle'], entry['completeness']))
-    x_values = [x for x, y in next(iter(plots.values()))]
+    x_values = [x for x, _ in next(iter(plots.values()))] if plots else []
 
     return {
         'title': 'Minimal Range for Complete Data Acquisition',
@@ -140,7 +117,7 @@ def screening_completeness(strategy):
         'data': {
             'x': ['Start Angle'] + x_values,
             'y1': [
-                [f'{total}°'] + [y for x, y in values]
+                [f'{total}°'] + [y for _, y in values]
                 for total, values in plots.items()
             ],
             'y1-label': 'Completeness (%)'
@@ -149,5 +126,3 @@ def screening_completeness(strategy):
                  " assumes the highest symmetry point group is the correct lattice. However, this may be false, as"
                  " a full dataset is required to accurately determine the correct symmetry."
     }
-
-

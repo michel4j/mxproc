@@ -832,71 +832,8 @@ class XDSAnalysis(Analysis):
         return score
 
     def report(self, **kwargs):
-        anom = 'Native' if not self.options.anomalous else 'Anomalous'
-        if self.options.screen:
-            names = []
-            scores = []
-            strategies = []
-            for expt in self.experiments:
-                strategy = self.get_step_result(expt, StepType.STRATEGY)
-                if strategy:
-                    strategies.append(strategy.get('strategy'))
-                    names.append(expt.name)
-                    scores.append(strategy.get('quality.score'))
-
-            if scores and strategies:
-                name_label = ", ".join(names)
-                report = {
-                    'title': f"{anom} Screening of {name_label}",
-                    'kind': 'MX Screening',
-                    'score': round(scores[0], 2),
-                    'strategy': strategies[0],
-                    'details': reporting.screening_report(self),
-                }
-                report_file = short_path(self.options.directory / "report.html", self.options.directory.parent)
-                logger.info(f'- HTML report: {report_file}')
-                reporting.save_report(report, self.options.directory)
-            else:
-                raise CommandFailed('No successful results to report on!')
-        elif self.options.merge:
-            scaled_expt = []
-            for expt in self.experiments:
-                scaling = self.get_step_result(expt, StepType.SCALE)
-                if scaling:
-                    scaled_expt.append((expt, scaling))
-            if scaled_expt:
-                experiment, scaling = scaled_expt[0]
-                name_label = ", ".join([expt.name for expt, res in scaled_expt])
-                report = {
-                    'title': f"{anom} Merging of {name_label}",
-                    'kind': f'MX {anom} Analysis',
-                    'score': round(scaling.get('quality.summary.score'), 2),
-                    'details': reporting.merging_details(self)
-                }
-                report_file = short_path(self.options.directory / "report.html", self.options.directory.parent)
-                logger.info(f'- HTML report: {report_file}')
-                reporting.save_report(report, self.options.directory, outputs=self.settings.get('reflection_files', {}))
-            else:
-                raise CommandFailed('No successful results to report on!')
-        else:
-            scaled_expt = []
-            for expt in self.experiments:
-                scaling = self.get_step_result(expt, StepType.SCALE)
-                if scaling:
-                    scaled_expt.append((expt, scaling))
-
-            if scaled_expt:
-                for expt, scaling in scaled_expt:
-                    work_dir = self.options.working_directories[expt.identifier]
-                    report_file = short_path(work_dir / "report.html", self.options.directory.parent)
-                    report = {
-                        'title': f"{anom} Analysis of {expt.name}",
-                        'kind': f'MX {anom} Analysis',
-                        'score': round(scaling.get('quality.summary.score'), 2),
-                        'details': reporting.single_details(self, expt)
-                    }
-                    logger.info(f'- HTML report: {report_file}')
-                    reporting.save_report(report, work_dir, outputs=self.settings.get('reflection_files', {}))
-            else:
-                raise CommandFailed('No successful results to report on!')
+        payload = reporting.build_report_payload(self)
+        for html_path in reporting.generate_reports(payload):
+            report_file = short_path(html_path, self.options.directory.parent)
+            logger.info(f'- HTML report: {report_file}')
 

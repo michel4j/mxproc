@@ -3,39 +3,51 @@ import shutil
 from pathlib import Path
 from typing import List
 
-from mxproc import Analysis
-from mxproc.xtal import Experiment
-from mxproc.common import StepType, load_json
+from mxproc.command import CommandFailed
+from mxproc.common import load_json
 
-from .generic import summary_table, lattice_table, spacegroup_table, standard_error_report
-from .generic import shell_statistics_report, frame_statistics_report, wilson_report, twinning_report
-from .screening import screening_summary, screening_strategy, screening_completeness
+from .generic import (
+    frame_statistics_report,
+    lattice_table,
+    shell_statistics_report,
+    spacegroup_table,
+    standard_error_report,
+    summary_table,
+    twinning_report,
+    wilson_report,
+)
+from .models import (
+    ExperimentReportData,
+    IndexReportData,
+    IntegrationReportData,
+    QualitySummary,
+    ReportPayload,
+    ScalingReportData,
+    StrategyReportData,
+    SymmetryReportData,
+    TwinningReportData,
+    build_report_payload,
+)
+from .screening import screening_completeness, screening_strategy, screening_summary
 from .text import text_report
-
 
 DATA_DIR = Path(__file__).parent / 'data'
 
 
 def save_report(report: dict, path: Path, outputs: dict = None):
     """
-    Save the given report to the
-    :param report: dictionary containing the report
-    :param path: location to store the report
-    :param outputs: dictionary mapping file types to file names, no path
+    Save the given report to disk as report.json, report.txt, and report.html.
     """
-
     outputs = outputs or {}
     report_file = path / 'report.json'
     text_file = path / 'report.txt'
     report.update(id=None, data_id=None, directory=str(path), outputs=outputs, filename='report.json')
 
-    # read previous json_file and obtain id from it if one exists:
     if report_file.exists():
         old_report = load_json(report_file)
         report['id'] = old_report.get('id')
         report['data_id'] = old_report.get('data_id')
 
-    # save
     with open(report_file, 'w') as file:
         json.dump(report, file, indent=4)
 
@@ -47,76 +59,110 @@ def save_report(report: dict, path: Path, outputs: dict = None):
     shutil.copy(DATA_DIR / 'report.min.css', path)
 
 
-def screening_report(analysis) -> List[dict]:
+def screening_report(expt: ExperimentReportData) -> List[dict]:
     """
-    Prepare a screening report
-    :param analysis: analysis object
-    :return: list of dictionaries
+    Prepare a screening report for a single experiment.
     """
-    experiment = None
-    for expt in analysis.experiments:
-        if analysis.get_step_result(expt, StepType.STRATEGY):
-            experiment = expt
-            break
-
-    if experiment is None:
+    if expt.indexing is None or expt.strategy is None:
         return []
-    else:
-        indexing = analysis.get_step_result(experiment, StepType.INDEX)
-        strategy = analysis.get_step_result(experiment, StepType.STRATEGY)
-        return [
-            {
-                'title': f'Screening Report for Dataset "{experiment.name}"',
-                'content': [
-                    screening_summary(analysis, experiment),
-                    screening_strategy(strategy),
-                    lattice_table(indexing),
-                    screening_completeness(strategy),
-                ]
-            }
-        ]
-
-
-def single_details(analysis: Analysis, experiment: Experiment) -> List[dict]:
-    anom = "Anomalous" if analysis.options.anomalous else "Native"
-
-    indexing = analysis.get_step_result(experiment, StepType.INDEX)
-    integration = analysis.get_step_result(experiment, StepType.INTEGRATE)
-    symmetry = analysis.get_step_result(experiment, StepType.SYMMETRY)
-    scaling = analysis.get_step_result(experiment, StepType.SCALE)
 
     return [
         {
-            'title': f"{anom} Data Analysis Report for '{experiment.name}'",
+            'title': f'Screening Report for Dataset "{expt.name}"',
             'content': [
-                summary_table(analysis),
-                lattice_table(integration),
-                spacegroup_table(symmetry)
+                screening_summary(expt),
+                screening_strategy(expt.strategy),
+                lattice_table(expt.indexing.lattices),
+                screening_completeness(expt.strategy),
             ],
-        },
-        standard_error_report(integration),
-        frame_statistics_report(symmetry),
-        shell_statistics_report(scaling),
-        wilson_report(scaling),
-        twinning_report(scaling),
+        }
     ]
 
 
-def merging_details(analysis: Analysis):
+def single_details(payload: ReportPayload, expt: ExperimentReportData) -> List[dict]:
+    anom = "Anomalous" if payload.anomalous else "Native"
+    assert expt.integration is not None
+    assert expt.symmetry is not None
+    assert expt.scaling is not None
 
+    return [
+        {
+            'title': f"{anom} Data Analysis Report for '{expt.name}'",
+            'content': [
+                summary_table(payload),
+                lattice_table(expt.integration.lattices),
+                spacegroup_table(expt.symmetry),
+            ],
+        },
+        standard_error_report(expt.integration),
+        frame_statistics_report(expt.symmetry),
+        shell_statistics_report(expt.scaling),
+        wilson_report(expt.scaling.twinning),
+        twinning_report(expt.scaling.twinning),
+    ]
+
+
+def merging_details(payload: ReportPayload) -> List[dict]:
     report_list = []
-    for experiment in analysis.experiments:
-        if analysis.get_step_result(experiment, StepType.SCALE):
-            report_list.extend(single_details(analysis, experiment))
-
+    for expt in payload.experiments:
+        if expt.scaling is not None:
+            report_list.extend(single_details(payload, expt))
     return report_list
 
 
-def multi_details(analysis: Analysis):
-    report_list = []
-    for experiment in analysis.experiments:
-        report_list.extend(single_details(analysis, experiment))
+def generate_reports(payload: ReportPayload) -> List[Path]:
+    """
+    Build and write reports according to payload mode (screen / merge / single).
+    Returns paths to generated report.html files.
+    """
+    anom = 'Anomalous' if payload.anomalous else 'Native'
+    generated: List[Path] = []
 
-    return report_list
+    if payload.screen:
+        screened = [expt for expt in payload.experiments if expt.strategy is not None]
+        if not screened:
+            raise CommandFailed('No successful results to report on!')
 
+        name_label = ", ".join(expt.name for expt in screened)
+        first = screened[0].strategy
+        assert first is not None
+        report = {
+            'title': f"{anom} Screening of {name_label}",
+            'kind': 'MX Screening',
+            'score': round(first.score, 2),
+            'strategy': first.strategy,
+            'details': screening_report(screened[0]),
+        }
+        save_report(report, payload.directory)
+        generated.append(payload.directory / 'report.html')
+        return generated
 
+    scaled = [expt for expt in payload.experiments if expt.scaling is not None]
+    if not scaled:
+        raise CommandFailed('No successful results to report on!')
+
+    if payload.merge:
+        first_scaling = scaled[0].scaling
+        assert first_scaling is not None
+        name_label = ", ".join(expt.name for expt in scaled)
+        report = {
+            'title': f"{anom} Merging of {name_label}",
+            'kind': f'MX {anom} Analysis',
+            'score': round(first_scaling.summary.score, 2),
+            'details': merging_details(payload),
+        }
+        save_report(report, payload.directory, outputs=payload.outputs)
+        generated.append(payload.directory / 'report.html')
+    else:
+        for expt in scaled:
+            assert expt.scaling is not None
+            report = {
+                'title': f"{anom} Analysis of {expt.name}",
+                'kind': f'MX {anom} Analysis',
+                'score': round(expt.scaling.summary.score, 2),
+                'details': single_details(payload, expt),
+            }
+            save_report(report, expt.work_dir, outputs=payload.outputs)
+            generated.append(expt.work_dir / 'report.html')
+
+    return generated
