@@ -432,7 +432,6 @@ class Application:
         self.parser.add_argument('-a', '--anom', help="Friedel's law False", action="store_true")
         self.parser.add_argument('-d', '--dir', type=str, help="Working Directory", default="")
         self.parser.add_argument('-m', '--multi', help='Separate datasets scaled together', action="store_true")
-        self.parser.add_argument('-u', '--use', type=str, default='XDS', help="Backend Engine. XDS | DIALS.")
         self.parser.add_argument('-1', '--single', action='store_true', default=False, help="Stop after a single step")
         self.parser.add_argument('-c', '--beam-center', type=float, nargs=2, help="Override Beam Center")
 
@@ -450,6 +449,14 @@ class Application:
         self.parser.add_argument('--beam-flux', type=float, help='Beam flux for dataset in ph/sec.')
         self.parser.add_argument('--beam-size', type=float, help="Beam aperture size")
         self.parser.add_argument('--beam-fwhm', type=float, nargs=2, help="Beam FWHM")
+
+        # engine selection
+        group = self.parser.add_mutually_exclusive_group()
+        group.add_argument("--xds", action="store_const", const="XDS", dest="use", help="Use XDS Backend")
+        group.add_argument("--dials", action="store_const", const="DIALS", dest="use", help="Use DIALS Backend")
+        group.add_argument("--rugnux", action="store_const", const="RUGNUX", dest="use", help="Use Rugnux Backend")
+        self.parser.set_defaults(use="XDS")
+        
         self.step = step
 
         self.parser.add_argument(

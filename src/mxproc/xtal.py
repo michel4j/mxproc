@@ -221,11 +221,12 @@ def load_experiment(filename: Union[str, Path]) -> Sequence[Experiment]:
     sweeps = numpy.split(angles, sweep_mask)
 
     add_suffix = len(sweeps) > 1
+    reference = dset.reference if dset.frame.format in ["HDF5", "NXmx"] else dset.template.format(field=sweep[0, 0])
     return [
         Experiment(
             name=f"{dset.name}" + (f"-{i + 1}" if add_suffix else ""),
             identifier=f"{dset.identifier}-{i + 1}",
-            reference=dset.template.format(field=sweep[0, 0]),
+            reference=reference,
             directory=dset.directory,
             format=dset.frame.format,
             detector=dset.frame.detector,

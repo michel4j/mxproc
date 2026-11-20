@@ -85,21 +85,28 @@ def single_details(payload: ReportPayload, expt: ExperimentReportData) -> List[d
     assert expt.symmetry is not None
     assert expt.scaling is not None
 
-    return [
+    content = [summary_table(payload)]
+    if expt.integration.lattices:
+        content.append(lattice_table(expt.integration.lattices))
+    if expt.symmetry.candidates:
+        content.append(spacegroup_table(expt.symmetry))
+
+    details = [
         {
             'title': f"{anom} Data Analysis Report for '{expt.name}'",
-            'content': [
-                summary_table(payload),
-                lattice_table(expt.integration.lattices),
-                spacegroup_table(expt.symmetry),
-            ],
-        },
-        standard_error_report(expt.integration),
-        frame_statistics_report(expt.symmetry),
-        shell_statistics_report(expt.scaling),
-        wilson_report(expt.scaling.twinning),
-        twinning_report(expt.scaling.twinning),
+            'content': content,
+        }
     ]
+    if expt.integration.errors[:-1]:
+        details.append(standard_error_report(expt.integration))
+    if expt.symmetry.frames or expt.symmetry.differences:
+        details.append(frame_statistics_report(expt.symmetry))
+    if expt.scaling.statistics:
+        details.append(shell_statistics_report(expt.scaling))
+    if expt.scaling.twinning.plots:
+        details.append(wilson_report(expt.scaling.twinning))
+    details.append(twinning_report(expt.scaling.twinning))
+    return details
 
 
 def merging_details(payload: ReportPayload) -> List[dict]:
