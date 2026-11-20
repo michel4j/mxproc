@@ -1,6 +1,5 @@
 import itertools
 import math
-import os
 
 import plotille
 import numpy as np
@@ -9,86 +8,57 @@ import matplotlib.pyplot as plt
 from matplotlib.colors import to_hex
 
 
-class AutoTickFormatter:
-    ticks: np.ndarray
-    limits: tuple[float, float]
+def nice_ticks(minimum: float, maximum: float, num_ticks: int = 8) -> tuple[np.ndarray, tuple[float, float], int]:
+    """
+    Generate clean, human-readable axis ticks, snapped (min, max) limits, and decimal digits.
+    """
+    if minimum == maximum:
+        minimum -= 1
+        maximum += 1
 
-    def __init__(self, minimum, maximum, num_ticks=8, default=True):
-        self.min = minimum
-        self.max = maximum
-        self.digits = 2
-        self.num_ticks = num_ticks
-        self.default = default
-        self.update_limits()
+    range_val = maximum - minimum
+    raw_step = range_val / (num_ticks - 1)
 
-    def update_limits(self):
-        """Generates clean, human-readable axis ticks."""
-        if self.min == self.max:
-            self.min = self.min - 1
-            self.max = self.max + 1
+    magnitude = 10 ** math.floor(math.log10(raw_step))
+    normalized = raw_step / magnitude
 
-        # Find the raw step size
-        range_val = self.max - self.min
-        raw_step = range_val / (self.num_ticks - 1)
+    if normalized < 1.5:
+        step = 1 * magnitude
+    elif normalized < 3:
+        step = 2 * magnitude
+    elif normalized < 7:
+        step = 5 * magnitude
+    else:
+        step = 10 * magnitude
 
-        # Calculate a "nice" step size (1, 2, or 5 * 10^x)
-        magnitude = 10 ** math.floor(math.log10(raw_step))
-        normalized = raw_step / magnitude
+    nice_min = math.floor(minimum / step) * step
+    nice_max = math.ceil(maximum / step) * step
 
-        if normalized < 1.5:
-            step = 1 * magnitude
-        elif normalized < 3:
-            step = 2 * magnitude
-        elif normalized < 7:
-            step = 5 * magnitude
+    ticks = []
+    current = nice_min
+    decimals = max(0, -int(math.floor(math.log10(step))))
+
+    while current <= nice_max + (step * 0.1):
+        ticks.append(round(current, decimals))
+        current += step
+
+    return np.array(ticks), (float(nice_min), float(nice_max)), decimals
+
+
+def make_tick_formatter(ticks: np.ndarray, digits: int, default: bool = True):
+    """
+    Return a plotille tick-formatting callable for the given tick array and precision.
+    """
+    def format_tick(min_, max_):
+        if default or np.abs(ticks - min_).min() < (max_ - min_) / 2:
+            value = round(min_, digits)
         else:
-            step = 10 * magnitude
-
-        # Snap the min and max to the new step
-        nice_min = math.floor(self.min / step) * step
-        nice_max = math.ceil(self.max / step) * step
-
-        # Generate the ticks, rounding to prevent floating-point drift
-        ticks = []
-        current = nice_min
-        decimals = max(0, -int(math.floor(math.log10(step))))
-
-        while current <= nice_max + (step * 0.1):
-            ticks.append(round(current, decimals))
-            current += step
-
-        self.ticks = np.array(ticks)
-        self.digits = decimals
-        self.limits = float(nice_min), float(nice_max)
-        return self.limits
-
-    def get_limits(self):
-        return self.limits
-
-    def get_value(self, min_, max_):
-        if self.default:
-            return round(min_, self.digits)
-        elif np.abs(self.ticks - min_).min() < (max_ - min_)/2:
-            return round(min_, self.digits)
-        else:
-            return np.nan
-
-    def __call__(self, min_, max_):
-        value = self.get_value(min_, max_)
+            value = np.nan
         if np.isnan(value) or np.isinf(value):
             return ''
         return f'{value:g}'
 
-
-class InvSqrFormatter(AutoTickFormatter):
-
-    def get_value(self, min_, max_):
-        if self.default:
-            return round(min_, self.digits)
-        elif np.abs(self.ticks - min_).min() < (max_ - min_)/2:
-            return round(min_, self.digits)
-        else:
-            return np.nan
+    return format_tick
 
 
 def float_or_nan(val):
@@ -106,14 +76,11 @@ def plot(data, plot_type='lineplot', style='full-height'):
     """
     Generates a text-based plot using plotille.
     """
-
-    os.environ['FORCE_COLOR'] = '1'     # Force generation of color plots
     cmap = plt.get_cmap('Set1')
 
     x_label = data['x'][0]
     # convert to float, but handle potential non-numeric values gracefully
     x_values = np.array(list(map(float_or_nan, data['x'][1:])))
-    x_tick_fmt = AutoTickFormatter(np.nanmin(x_values), np.nanmax(x_values))
 
     if data.get('x-scale') == 'inv-square':
         # plotille doesn't support non-linear scales, so we transform the data.
@@ -121,7 +88,8 @@ def plot(data, plot_type='lineplot', style='full-height'):
         with np.errstate(divide='ignore'):  # ignore divide by zero
             x_values = 1 / (x_values ** 2)
 
-        x_tick_fmt = InvSqrFormatter(np.nanmin(x_values), np.nanmax(x_values))
+    x_ticks, x_limits, x_digits = nice_ticks(np.nanmin(x_values), np.nanmax(x_values))
+    x_tick_fmt = make_tick_formatter(x_ticks, x_digits)
     series = [
         [s for s in data.get(ax_name)]
         for ax_name in ['y1', 'y2']
@@ -135,18 +103,20 @@ def plot(data, plot_type='lineplot', style='full-height'):
         all_y_values = np.array(list(itertools.chain.from_iterable([line[1:] for line in group]))).astype(float)
         y_min = np.nanmin(all_y_values)
         y_max = np.nanmax(all_y_values)
-        y_tick_fmt = AutoTickFormatter(y_min, y_max, default=False)
+        y_ticks, y_limits, y_digits = nice_ticks(y_min, y_max)
+        y_tick_fmt = make_tick_formatter(y_ticks, y_digits, default=False)
 
         fig = plotille.Figure()
         fig.y_ticks_fkt = y_tick_fmt
         fig.x_ticks_fkt = x_tick_fmt
+        fig.with_colors = True
         fig.color_mode = 'rgb'
         fig.origin = False
         fig.width = 80
         fig.height = 24 if style == 'full-height' else 16
         fig.x_label = x_label
-        fig.set_x_limits(*x_tick_fmt.get_limits())
-        fig.set_y_limits(*y_tick_fmt.get_limits())
+        fig.set_x_limits(*x_limits)
+        fig.set_y_limits(*y_limits)
 
         for line in group:
             rgba_color = cmap(color_index)
