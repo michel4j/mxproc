@@ -47,7 +47,7 @@ version = "0.0.0"
 "auto.signal" = "mxproc.programs.dozor:process_signal"
 
 [build-system]
-requires = ["hatchling"]
+requires = ["hatchling", "uv-dynamic-versioning"]
 build-backend = "hatchling.build"
 
 [tool.uv]
