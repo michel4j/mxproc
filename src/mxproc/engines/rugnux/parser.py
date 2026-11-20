@@ -12,7 +12,6 @@ from typing import Sequence
 
 from .models import ExtraLattice, IceRingRow, PlotTable, RugnuxReport, ShellRow, SweepEntry
 
-DEFAULT_RUGNUX_BIN = Path.home() / "Applications" / "rugnux" / "bin" / "rugnux"
 
 _KV_RE = re.compile(r"^([A-Z][A-Z0-9_]*)=\s*(.*)$")
 _BANNER_STARS_RE = re.compile(r"^#\s*\*{10,}\s*$")
@@ -32,8 +31,6 @@ def resolve_rugnux_binary() -> str:
         return env_bin
     if which_bin := shutil.which("rugnux"):
         return which_bin
-    if DEFAULT_RUGNUX_BIN.exists():
-        return str(DEFAULT_RUGNUX_BIN)
     return "rugnux"
 
 
