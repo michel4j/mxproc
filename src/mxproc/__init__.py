@@ -19,9 +19,9 @@ from typing import Sequence, Dict, Tuple, Any
 import yaml
 
 from mxproc import log
-from mxproc.command import CommandFailed
+from mxproc.command import CommandFailed, CommandRunner, SlurmRunner
 from mxproc.common import (
-    StepType, InvalidAnalysisStep, StateType, Result, Workflow, logistic, parse_ranges, WorkingDir, fix_permissions,
+    StepType, InvalidAnalysisStep, StateType, Result, Workflow, logistic, parse_ranges, fix_permissions,
     parse_cluster
 )
 from mxproc.xtal import load_multiple, Experiment, Beam
@@ -92,14 +92,16 @@ class Analysis(ABC):
 
     prefix: str = 'proc'
 
-    def __init__(self, args: argparse.Namespace):
+    def __init__(self, args: argparse.Namespace, runner: CommandRunner | None = None):
         """
         Data analysis objects
         :param args: arguments parsed from command line
+        :param runner: optional CommandRunner seam for command execution
         """
 
         self.args = args
         self.experiments = ()
+        self.runner: CommandRunner = runner if runner is not None else SlurmRunner()
 
         # prepare and load experiment
         if args.images:
@@ -227,19 +229,18 @@ class Analysis(ABC):
             'settings': self.settings
         }
 
-        meta_file = Path(f'{step.slug()}.meta')
-        latest_file = Path('latest.meta')
+        meta_file = self.options.directory / f'{step.slug()}.meta'
+        latest_file = self.options.directory / 'latest.meta'
 
-        with WorkingDir(self.options.directory):
-            # backup file if needed
-            if meta_file.exists() and backup:
-                meta_file.rename(f"{str(meta_file)}.bk")
+        # backup file if needed
+        if meta_file.exists() and backup:
+            meta_file.rename(f"{str(meta_file)}.bk")
 
-            with gzip.open(meta_file, 'wb') as handle:  # gzip compressed yaml file
-                yaml.dump(meta, handle, encoding='utf-8')
+        with gzip.open(meta_file, 'wb') as handle:  # gzip compressed yaml file
+            yaml.dump(meta, handle, encoding='utf-8')
 
-            latest_file.unlink(missing_ok=True)
-            latest_file.symlink_to(meta_file)
+        latest_file.unlink(missing_ok=True)
+        latest_file.symlink_to(meta_file.name)
 
     def update_result(self, results: Dict[str, Result], step: StepType):
         """
@@ -299,10 +300,6 @@ class Analysis(ABC):
         logger.banner(sub_header, overline=False, line='-')
         try:
             while step is not None:
-                # always go back to top-level working directory before running step
-                if self.options.directory.exists():
-                    os.chdir(self.options.directory)
-
                 step_method = self.methods.get(step)
                 try:
                     logger.info_value(step.desc(), '', spacer='-')

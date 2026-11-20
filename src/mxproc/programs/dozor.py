@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import os
 import shutil
-import subprocess
 from pathlib import Path
 from parsefire import parser
 from mxproc import Experiment
+from mxproc.command import CommandFailed, CommandRunner, LocalRunner
 
 
 CBF_LIB = os.getenv('XDS_ZCBF_LIB', shutil.which('xds-zcbf.so'))
@@ -43,18 +43,25 @@ DOZOR_OUTPUT = {
 }
 
 
-def data_resolution(expt: Experiment) -> list[float]:
+def data_resolution(
+    expt: Experiment,
+    work_dir: Path = Path("."),
+    runner: CommandRunner | None = None,
+) -> list[float]:
     """
     Perform signal strength analysis on a file
     :param expt: full path to file
-    :return: list of dictionary scores per image
+    :param work_dir: working directory for temporary dozor input files
+    :param runner: optional CommandRunner for executing dozor
+    :return: list of resolution scores per image
     """
-
+    work_dir = Path(work_dir)
+    runner = runner if runner is not None else LocalRunner()
     detector = expt.detector.replace('Dectris', '').replace(' ', '').strip().lower()
     scores = []
     for start, end in expt.frames:
         num_images = end - start
-        dat_file = Path(f'{expt.name}-{start}.dat')
+        dat_file = work_dir / f'{expt.name}-{start}.dat'
         with open(dat_file, 'wt') as handle:
             handle.write(DOZOR_DATA.format(
                 zcbf_lib=CBF_LIB or '',
@@ -75,11 +82,16 @@ def data_resolution(expt: Experiment) -> list[float]:
                 name_template=str(expt.directory / expt.glob)
             ))
 
-        args = ['dozor', str(dat_file)]
         try:
-            proc = subprocess.run(args, capture_output=True, text=True)
-            info = parser.parse_text(DOZOR_OUTPUT, proc.stdout)
-        except FileNotFoundError:
+            stdout = runner.run(
+                f'dozor {dat_file.name}',
+                work_dir,
+                logfile=None,
+                show_progress=False,
+                capture=True,
+            )
+            info = parser.parse_text(DOZOR_OUTPUT, stdout)
+        except (CommandFailed, FileNotFoundError):
             pass
         else:
             scores.extend([item['resolution'] for item in info])

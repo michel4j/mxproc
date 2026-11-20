@@ -4,6 +4,7 @@ import argparse
 import os
 import re
 import shutil
+from dataclasses import replace
 from multiprocessing import cpu_count
 from collections import defaultdict
 from pathlib import Path
@@ -14,7 +15,7 @@ import numpy
 import vg
 
 from mxproc import Analysis, reporting, parse_cluster
-from mxproc.command import run_command, CommandFailed
+from mxproc.command import CommandFailed
 from mxproc.common import StateType, StepType, backup_files, show_warnings, find_lattice, short_path
 from mxproc.common import generate_failure, Result, select_resolution, ScoreManager, summarize_ranges
 from mxproc.engines.xds import io, stats
@@ -172,7 +173,6 @@ class XDSAnalysis(Analysis):
             directory = directory if len(self.experiments) == 1 else directory / experiment.name
             directory.mkdir(parents=True, exist_ok=True)
             self.options.working_directories[experiment.identifier] = directory
-            os.chdir(self.options.working_directories[experiment.identifier])
             spot_range = [(r[0], r[1]) for r in experiment.frames]
             io_options = {
                 'data_range': experiment.frames,
@@ -180,7 +180,7 @@ class XDSAnalysis(Analysis):
                 'beam_center': experiment.detector_origin
             }
             io_options.update(self.options.extras)
-            io.create_input_file(('ALL',), experiment, io.XDSParameters(**io_options))
+            io.create_input_file(('ALL',), experiment, io.XDSParameters(**io_options), work_dir=directory)
             if directory != self.options.directory:
                 path_str = short_path(directory, self.options.directory.parent)
             else:
@@ -199,26 +199,25 @@ class XDSAnalysis(Analysis):
                 'beam_center': experiment.detector_origin
             }
             io_options.update(self.options.extras)
-            os.chdir(self.options.working_directories[experiment.identifier])
-            job = io.create_input_file(('XYCORR', 'INIT', 'COLSPOT'), experiment, io.XDSParameters(**io_options))
+            work_dir = self.options.working_directories[experiment.identifier]
+            job = io.create_input_file(
+                ('XYCORR', 'INIT', 'COLSPOT'),
+                experiment,
+                io.XDSParameters(**io_options),
+                work_dir=work_dir,
+            )
             image_range = summarize_ranges(io_options['spot_range'])
 
-            if job.mode == 'SLURM':
-                command = (
-                    f'auto.xds '
-                    f'--nodes={job.nodes} '
-                    f'--cpus={job.cpus} '
-                    f'--tasks={job.tasks} '
-                    f'--host={job.host} '
-                    f'--partition={job.partition} '
-                )
-            else:
-                command = f'auto.xds'
-
             try:
-                run_command(command, desc=f'{experiment.name}: Finding strong spots in images {image_range}')
-                result = Result(state=StateType.SUCCESS, details=XDSParser.parse('COLSPOT.LP'))
-                io.save_spots()
+                self.runner.run(
+                    'xds_par',
+                    work_dir,
+                    desc=f'{experiment.name}: Finding strong spots in images {image_range}',
+                    cluster=True,
+                    job=job,
+                )
+                result = Result(state=StateType.SUCCESS, details=XDSParser.parse(str(work_dir / 'COLSPOT.LP')))
+                io.save_spots(work_dir=work_dir)
             except CommandFailed as err:
 
                 result = generate_failure(f"Command failed: {err}")
@@ -232,7 +231,7 @@ class XDSAnalysis(Analysis):
             if not self.get_step_result(experiment, StepType.SPOTS):
                 continue
 
-            os.chdir(self.options.working_directories[experiment.identifier])
+            work_dir = self.options.working_directories[experiment.identifier]
 
             result = generate_failure('')
             logger.info(f'{experiment.name}:')
@@ -250,8 +249,10 @@ class XDSAnalysis(Analysis):
 
             param_manager = IndexParamManager(**io_options)
             for trial_number in range(MAX_INDEX_TRIES):
-                backup_files('IDXREF.LP')
-                result, retry_requested, retry_messages = autoindex_trial(experiment, param_manager, trial_number)
+                backup_files(str(work_dir / 'IDXREF.LP'))
+                result, retry_requested, retry_messages = autoindex_trial(
+                    experiment, param_manager, trial_number, work_dir=work_dir, runner=self.runner
+                )
                 if retry_requested:
                     show_warnings(f'Retrying Indexing:', retry_messages)
                 else:
@@ -278,7 +279,7 @@ class XDSAnalysis(Analysis):
     def strategy(self, **kwargs):
         results = {}
         for experiment in self.experiments:
-            os.chdir(self.options.working_directories[experiment.identifier])
+            work_dir = self.options.working_directories[experiment.identifier]
             index_result = self.get_step_result(experiment, StepType.INDEX)
             if not index_result: continue
             lattice = index_result.get('symmetry_lattice')
@@ -292,24 +293,26 @@ class XDSAnalysis(Analysis):
                 'min_fraction': 0.10
             }
             io_options.update(**self.options.extras)
-            io.filter_spots()
-            job = io.create_input_file(('IDXREF', 'DEFPIX', 'XPLAN'), experiment, io.XDSParameters(**io_options))
-            if job.mode == 'SLURM':
-                command = (
-                    f'auto.xds '
-                    f'--nodes=1 '
-                    f'--tasks=1 '
-                    f'--cpus={job.cpus * job.tasks // job.nodes} '
-                    f'--host={job.host} '
-                    f'--partition={job.partition} '
-                )
-            else:
-                command = f'auto.xds'
+            io.filter_spots(work_dir=work_dir)
+            job = io.create_input_file(
+                ('IDXREF', 'DEFPIX', 'XPLAN'),
+                experiment,
+                io.XDSParameters(**io_options),
+                work_dir=work_dir,
+            )
+            single_node_job = replace(
+                job, nodes=1, tasks=1, cpus=job.cpus * job.tasks // max(1, job.nodes)
+            )
             try:
-                run_command(
-                    command, desc=f'{experiment.name}: Calculating optimal strategy', check_files=('XPLAN.LP',)
+                self.runner.run(
+                    'xds_par',
+                    work_dir,
+                    desc=f'{experiment.name}: Calculating optimal strategy',
+                    check_files=('XPLAN.LP',),
+                    cluster=True,
+                    job=single_node_job,
                 )
-                details = XDSParser.parse('XPLAN.LP')
+                details = XDSParser.parse(str(work_dir / 'XPLAN.LP'))
             except (FileNotFoundError, CommandFailed) as err:
                 result = generate_failure(f"Command failed: {err}")
             else:
@@ -358,7 +361,9 @@ class XDSAnalysis(Analysis):
                         f'- Unit-Cell axis closest to beam',
                         f'{axis_near_beam["name"]}, {axis_near_beam["beam"]:0.1f}°'
                     )
-                resolution_details = stats.determine_resolution(experiment)
+                resolution_details = stats.determine_resolution(
+                    experiment, work_dir=work_dir, runner=self.runner
+                )
 
                 # calculate maximum delta to avoid overlaps - see Dauter, Acta Cryst. (1999). D55, p1707
                 mosaicity = index_result.get('quality.mosaicity', 0.1)
@@ -391,7 +396,12 @@ class XDSAnalysis(Analysis):
                 beam = self.options.get_beam()
                 beam.wavelength = experiment.wavelength
                 success, dose_info = raddose.get_dose(
-                    crystal_size=beam.aperture, total_range=best_strategy['total_angle'], lattice=lattice, beam=beam
+                    crystal_size=beam.aperture,
+                    total_range=best_strategy['total_angle'],
+                    lattice=lattice,
+                    beam=beam,
+                    work_dir=work_dir,
+                    runner=self.runner,
                 )
 
                 details.update({
@@ -423,7 +433,7 @@ class XDSAnalysis(Analysis):
     def integrate(self, **kwargs):
         results = {}
         for experiment in self.experiments:
-            os.chdir(self.options.working_directories[experiment.identifier])
+            work_dir = self.options.working_directories[experiment.identifier]
 
             if not self.get_step_result(experiment, StepType.INDEX):
                 continue
@@ -443,7 +453,7 @@ class XDSAnalysis(Analysis):
             previous_integration = self.get_step_result(experiment, StepType.INTEGRATE)
             if self.options.optimize and previous_integration is not None:
                 # copy parameter to new file
-                shutil.copy('GXPARM.XDS', 'XPARM.XDS')
+                shutil.copy(work_dir / 'GXPARM.XDS', work_dir / 'XPARM.XDS')
 
                 # inject parameters to extra options
                 io_options.update(
@@ -453,25 +463,24 @@ class XDSAnalysis(Analysis):
                     divergence_esd=previous_integration.get('parameters.divergence_esd'),
                 )
 
-            job = io.create_input_file(('DEFPIX', 'INTEGRATE', 'CORRECT',), experiment, io.XDSParameters(**io_options))
-            if job.mode == 'SLURM':
-                command = (
-                    f'auto.xds '
-                    f'--nodes={job.nodes} '
-                    f'--cpus={job.cpus} '
-                    f'--tasks={job.tasks} '
-                    f'--host={job.host} '
-                    f'--partition={job.partition} '
-                )
-            else:
-                command = f'auto.xds'
+            job = io.create_input_file(
+                ('DEFPIX', 'INTEGRATE', 'CORRECT'),
+                experiment,
+                io.XDSParameters(**io_options),
+                work_dir=work_dir,
+            )
 
             try:
-                run_command(
-                    command, desc=f'- Integrating frames {range_text}', check_files=['INTEGRATE.LP', 'CORRECT.LP']
+                self.runner.run(
+                    'xds_par',
+                    work_dir,
+                    desc=f'- Integrating frames {range_text}',
+                    check_files=['INTEGRATE.LP', 'CORRECT.LP'],
+                    cluster=True,
+                    job=job,
                 )
-                integration = XDSParser.parse('INTEGRATE.LP')
-                correction = XDSParser.parse('CORRECT.LP')
+                integration = XDSParser.parse(str(work_dir / 'INTEGRATE.LP'))
+                correction = XDSParser.parse(str(work_dir / 'CORRECT.LP'))
             except CommandFailed as err:
                 result = generate_failure(f"Command failed: {err}")
             else:
@@ -497,17 +506,19 @@ class XDSAnalysis(Analysis):
         symmetry_experiments = []
 
         for experiment in self.experiments:
-            os.chdir(self.options.working_directories[experiment.identifier])
+            work_dir = self.options.working_directories[experiment.identifier]
 
             if self.get_step_result(experiment, StepType.INTEGRATE):
                 logger.info(f'{experiment.name}:')
                 symmetry_experiments.append(experiment)
                 try:
-                    run_command(
-                        'pointless xdsin INTEGRATE.HKL xmlout pointless.xml', desc=f'- Determining symmetry',
-                        check_files=['pointless.xml']
+                    self.runner.run(
+                        'pointless xdsin INTEGRATE.HKL xmlout pointless.xml',
+                        work_dir,
+                        desc=f'- Determining symmetry',
+                        check_files=['pointless.xml'],
                     )
-                    details = pointless.parse_pointless('pointless.xml')
+                    details = pointless.parse_pointless(str(work_dir / 'pointless.xml'))
                     experiment.lattice = details['lattice']
                 except CommandFailed as err:
                     result = generate_failure(f"Command failed: {err}")
@@ -522,7 +533,6 @@ class XDSAnalysis(Analysis):
         for experiment in symmetry_experiments:
             if experiment.identifier not in results:
                 continue
-            os.chdir(self.options.working_directories[experiment.identifier])
 
             result = self.apply_symmetry(experiment, reference)
             result.details['symmetry'] = results[experiment.identifier].details
@@ -550,8 +560,8 @@ class XDSAnalysis(Analysis):
 
         reindex_lattice, reindex_matrix = find_lattice(target_lattice, integrate_result.details['lattices'])
         if reindex_lattice:
+            directory = self.options.working_directories[experiment.identifier]
             if reference != experiment:
-                directory = self.options.working_directories[experiment.identifier]
                 reference_directory = self.options.working_directories[reference.identifier]
                 reference_data = Path(os.path.relpath((reference_directory / "XDS_ASCII.HKL"), directory))
             else:
@@ -566,27 +576,28 @@ class XDSAnalysis(Analysis):
                 }
                 io_options.update(**self.options.extras)
                 io_options.update(lattice=reindex_lattice, reindex=reindex_matrix)
-                job = io.create_input_file(('CORRECT',), experiment, io.XDSParameters(**io_options))
-
-                if job.mode == 'SLURM':
-                    command = (
-                        f'auto.xds '
-                        '--nodes=1 '
-                        '--tasks=1 '
-                        f'--cpus={job.cpus * job.tasks // job.nodes} '
-                        f'--host={job.host} '
-                        f'--partition={job.partition} '
-                    )
-                else:
-                    command = f'auto.xds'
-
-                run_command(
-                    command, desc=f'- Applying symmetry {reindex_lattice.name} - #{reindex_lattice.spacegroup}'
+                job = io.create_input_file(
+                    ('CORRECT',), experiment, io.XDSParameters(**io_options), work_dir=directory
                 )
-                run_command('echo "XDS_ASCII.HKL" | xdsstat 20 3 > XDSSTAT.LP', desc=f'- Gathering extra statistics')
-                correction = XDSParser.parse('CORRECT.LP')
-                parameters = XDSParser.parse('GXPARM.XDS')
-                stats_tables = XDSParser.parse('XDSSTAT.LP')
+                single_node_job = replace(
+                    job, nodes=1, tasks=1, cpus=job.cpus * job.tasks // max(1, job.nodes)
+                )
+
+                self.runner.run(
+                    'xds_par',
+                    directory,
+                    desc=f'- Applying symmetry {reindex_lattice.name} - #{reindex_lattice.spacegroup}',
+                    cluster=True,
+                    job=single_node_job,
+                )
+                self.runner.run(
+                    'echo "XDS_ASCII.HKL" | xdsstat 20 3 > XDSSTAT.LP',
+                    directory,
+                    desc=f'- Gathering extra statistics',
+                )
+                correction = XDSParser.parse(str(directory / 'CORRECT.LP'))
+                parameters = XDSParser.parse(str(directory / 'GXPARM.XDS'))
+                stats_tables = XDSParser.parse(str(directory / 'XDSSTAT.LP'))
             except CommandFailed as err:
                 result = generate_failure(f"Command failed: {err}")
             else:
@@ -677,21 +688,16 @@ class XDSAnalysis(Analysis):
                 })
 
         try:
-            job = io.write_xscale_input(scale_configs, **self.options.extras)
-            if job.mode == 'SLURM':
-                command = (
-                    f'auto.xds xscale_par '
-                    f'--nodes=1 '
-                    f'--tasks=1 '
-                    f'--cpus={job.cpus} '
-                    f'--host={job.host} '
-                    f'--partition={job.partition} '
-                )
-            else:
-                command = f'auto.xds xscale_par'
-
-            run_command(command, f'- Scaling {len(scalable_experiments)} dataset(s) for {method}')
-            scaling = XDSParser.parse_xscale()
+            job = io.write_xscale_input(scale_configs, work_dir=self.options.directory, **self.options.extras)
+            single_node_job = replace(job, nodes=1, tasks=1)
+            self.runner.run(
+                'xscale_par',
+                self.options.directory,
+                desc=f'- Scaling {len(scalable_experiments)} dataset(s) for {method}',
+                cluster=True,
+                job=single_node_job,
+            )
+            scaling = XDSParser.parse_xscale(work_dir=self.options.directory)
         except CommandFailed as err:
             result = generate_failure(f'Command Failed: {err}')
             results = {
@@ -761,17 +767,24 @@ class XDSAnalysis(Analysis):
 
         return results
 
-    @staticmethod
-    def assess_quality(data_file: str | Path) -> dict:
+    def assess_quality(self, data_file: str | Path) -> dict:
         """
         Check the data quality for the specified file and return a dictionary of results
         :param data_file: reflection file
         """
 
         try:
-            log_file = str(Path(data_file).absolute().parent / "XTRIAGE.LP")
+            data_path = Path(data_file)
+            if not data_path.is_absolute():
+                data_path = self.options.directory / data_path
+            log_file = str(data_path.parent / "XTRIAGE.LP")
             command = f'phenix.xtriage {data_file} loggraphs=True nproc=8 log={log_file}'
-            run_command(command, f'- Assessing quality of "{data_file}"', check_files=[log_file])
+            self.runner.run(
+                command,
+                self.options.directory,
+                desc=f'- Assessing quality of "{data_file}"',
+                check_files=[log_file],
+            )
             quality = XDSParser.parse(log_file)
         except CommandFailed:
             quality = {}
@@ -780,6 +793,7 @@ class XDSAnalysis(Analysis):
 
     def export(self, **kwargs):
         outputs = {}
+        work_dir = self.options.directory
         for scaled_input, names in self.settings.get('outputs', {}).items():
             # get common name and strip special characters from ending.
             common_name = re.sub(r"[-_+]$", '', os.path.commonprefix(names))
@@ -791,18 +805,18 @@ class XDSAnalysis(Analysis):
                 'anomalous': self.options.anomalous,
                 'input_file': scaled_input,
                 'prefix': prefix,
-            })
-            run_command('xdsconv', f'- Exporting SHELX reflection file "{prefix}-shelx.hkl"')
+            }, work_dir=work_dir)
+            self.runner.run('xdsconv', work_dir, desc=f'- Exporting SHELX reflection file "{prefix}-shelx.hkl"')
             outputs['shelx'] = f"{prefix}-shelx.hkl"
 
             # MTZ
             command = f'phenix.reflection_file_converter  {scaled_input} --write_unmerged --mtz={prefix}.mtz'
-            run_command(command, f'- Exporting Unmerged MTZ reflection file "{prefix}.mtz"')
+            self.runner.run(command, work_dir, desc=f'- Exporting Unmerged MTZ reflection file "{prefix}.mtz"')
             outputs['mtz'] = f"{prefix}.mtz"
 
             # Unmerged MTZ
             command = f'phenix.reflection_file_converter  {scaled_input} --generate_r_free_flags --mtz={prefix}-freer.mtz'
-            run_command(command, f'- Exporting Unmerged MTZ reflection file with FreeR "{prefix}-freer.mtz"')
+            self.runner.run(command, work_dir, desc=f'- Exporting Unmerged MTZ reflection file with FreeR "{prefix}-freer.mtz"')
             outputs['freer'] = f"{prefix}-freer.mtz"
 
         self.settings['reflection_files'] = outputs
@@ -974,7 +988,6 @@ class XDSAnalysis(Analysis):
             if scaled_expt:
                 for expt, scaling in scaled_expt:
                     work_dir = self.options.working_directories[expt.identifier]
-                    os.chdir(work_dir)
                     report_file = short_path(work_dir / "report.html", self.options.directory.parent)
                     report = {
                         'title': f"{anom} Analysis of {expt.name}",

@@ -1,8 +1,9 @@
 import csv
 import re
-
+from pathlib import Path
 from typing import Tuple
-from mxproc.command import run_command, CommandFailed
+
+from mxproc.command import CommandFailed, CommandRunner, LocalRunner
 from mxproc.xtal import Lattice, Beam
 
 DOSE_LIMIT = 30.0   # MGy, from PNAS  (2006) 103 (13) 4912-4917
@@ -54,7 +55,14 @@ def load_csv_dict(filename: str) -> dict:
             return {fix_key(key): float(value) for key, value in row.items()}
 
 
-def get_dose(crystal_size: float, total_range: float, lattice: Lattice, beam: Beam) -> Tuple[bool, dict]:
+def get_dose(
+    crystal_size: float,
+    total_range: float,
+    lattice: Lattice,
+    beam: Beam,
+    work_dir: Path = Path("."),
+    runner: CommandRunner | None = None,
+) -> Tuple[bool, dict]:
     """
     Calculate the Average Diffraction weigthed dose and the maximum dose for 1 second exposure
     using Raddose3D
@@ -63,13 +71,17 @@ def get_dose(crystal_size: float, total_range: float, lattice: Lattice, beam: Be
     :param total_range: Total oscillation range for wedge
     :param lattice: Lattice parameters
     :param beam: Beam parameters
-    :return: Tuple of book, dict where the bool indicates if the run was successful
+    :param work_dir: working directory for RAD.INP and RADDOSE.CSV
+    :param runner: optional CommandRunner for executing raddose
+    :return: Tuple of bool, dict where the bool indicates if the run was successful
     """
+    work_dir = Path(work_dir)
+    runner = runner if runner is not None else LocalRunner()
     num_residues = lattice.estimate_content()
     num_sulphurs = SULFUR_CONTENT * num_residues
     cell_constant = lattice.volume()**(1/3)
     energy = 12.398/beam.wavelength
-    with open('RAD.INP', 'w') as file:
+    with open(work_dir / 'RAD.INP', 'w') as file:
         file.write(INPUT_TEMPLATE.format(
             crystal_size=crystal_size,
             cell_constant=cell_constant,
@@ -83,8 +95,12 @@ def get_dose(crystal_size: float, total_range: float, lattice: Lattice, beam: Be
         ))
 
     try:
-        run_command("raddose -i RAD.INP -p '' -o SummaryCSV:RADDOSE.CSV", "Estimating Radiation Dose")
-        details = load_csv_dict("RADDOSE.CSV")
+        runner.run(
+            "raddose -i RAD.INP -p '' -o SummaryCSV:RADDOSE.CSV",
+            work_dir,
+            desc="Estimating Radiation Dose",
+        )
+        details = load_csv_dict(str(work_dir / "RADDOSE.CSV"))
         success = True
     except (CommandFailed, FileNotFoundError):
         details = {}

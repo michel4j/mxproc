@@ -1,18 +1,27 @@
+from pathlib import Path
 import numpy
 import pandas
 
+from mxproc.command import CommandRunner
 from mxproc.programs import dozor
 
 MAX_DETECTOR_COVERAGE = 0.85    # Diffraction should cover up to 85% of the detector surface
 
 
-def determine_resolution(expt):
+def determine_resolution(
+    expt,
+    work_dir: Path = Path("."),
+    runner: CommandRunner | None = None,
+):
     """
     For a given experiment, calculate the diffraction resolution of the reflections and the detector
     limit, as well as the suggested maximum resolution
     :param expt: Experiment
+    :param work_dir: working directory containing SPOT.XDS
+    :param runner: optional CommandRunner for dozor
     """
-    spots = numpy.loadtxt('SPOT.XDS')
+    work_dir = Path(work_dir)
+    spots = numpy.loadtxt(work_dir / 'SPOT.XDS')
     indexed = numpy.abs(spots[:, -3:]).sum(axis=1) > 0.0
 
     df = pandas.DataFrame(spots[indexed, :], columns=['x', 'y', 'angle', 'intensity', 'h', 'k', 'l'])
@@ -32,7 +41,7 @@ def determine_resolution(expt):
     df['inv_d_sqr'] = 1/df['resolution']**2
 
     bragg_d = numpy.percentile(df['resolution'], 0.99)
-    resolutions = dozor.data_resolution(expt)
+    resolutions = dozor.data_resolution(expt, work_dir=work_dir, runner=runner)
     resolutions.append(float(bragg_d))
     observed_d = min(resolutions)
 

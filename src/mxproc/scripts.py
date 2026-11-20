@@ -1,12 +1,10 @@
 from __future__ import annotations
 
 import argparse
-import subprocess
-import re
-import time
 from pathlib import Path
 
 from mxproc import Application
+from mxproc.command import LocalRunner, SlurmRunner
 from mxproc.common import StepType
 
 
@@ -68,86 +66,6 @@ def auto_symmetry() -> int:
     return _run_application("Determine and Apply Symmetry", StepType.SYMMETRY)
 
 
-# Functions copied from bin/auto.xds to provide the same behavior when called as a package function
-
-def tail(file_path: Path, sentinel: str = "COMMAND-DONE", interval: float = 0.1):
-    """
-    Generator function that tails a file and yields new lines as they are added.
-
-    :param file_path: Path to the file to be tailed.
-    :param sentinel: return if any line contains this text
-    :param interval: Time to wait (in seconds) between checks for new lines.
-    """
-    # wait for file to exist
-    while not file_path.exists():
-        print(f'Waiting for {file_path} ...')
-        time.sleep(1)
-
-    with open(file_path, 'r') as file:
-        # Go to the end of the file
-        found = False
-        while not found:
-            text = file.readline()
-            found = bool(re.search(rf'{sentinel}', text))
-            yield text
-
-
-def run_slurm_job(command: str, nodes: int, cpus: int, tasks: int, host: str, partition: str = 'batch', duration: str = '00:30:00'):
-    """
-    Submit a SLURM job script to the cluster.
-
-    :param command: command to run
-    :param nodes: Number of nodes
-    :param cpus: Number of CPUs per task
-    :param tasks: Total Number of tasks per node
-    :param host: hostname or 'user@hostname' for ssh remote submission
-    :param duration: maximum duration of slurm job
-    :param partition: slurm partition
-    """
-
-    # Generate the SLURM job script
-    log_file = Path("xds-slurm.log")
-    try:
-        log_file.unlink()
-    except Exception:
-        pass
-
-    job_script = (
-        "#!/bin/bash \n\n"
-        f"#SBATCH --partition={partition}\n"
-        f"#SBATCH --nodes=1-{nodes}\n"
-        f"#SBATCH --ntasks-per-node={tasks//nodes}  # number of MPI processes\n"
-        f"#SBATCH --cpus-per-task={cpus}            # number of OpenMP threads\n"
-        "#SBATCH --mem=0                            # use all memory\n"
-        f"#SBATCH --time={duration}\n"
-        f"#SBATCH --output={log_file}\n\n"
-        f"# run {command} \n"
-        f"{command}\n"
-        "echo 'COMMAND-DONE'\n\n"
-    )
-
-    # Write the job script to a file
-    job_script_file = Path("xds-slurm.sh")
-    with open(job_script_file, 'w') as file:
-        file.write(job_script)
-
-    current_dir = Path.cwd().resolve()
-    ssh_command = f'ssh -x {host} "cd {current_dir}; sbatch {job_script_file}"'
-    subprocess.run(ssh_command, shell=True)
-
-    # tail log file until job to complete
-    cmd_output = tail(log_file)
-    for line in cmd_output:
-        print(line, end="")
-
-
-def run_standard_job(command: str):
-    """
-    Run a command on the local machine.
-    """
-    subprocess.run(command, shell=True)
-
-
 def auto_xds() -> int:
     """
     Run the functionality previously provided by the standalone `bin/auto.xds` script.
@@ -165,16 +83,16 @@ def auto_xds() -> int:
 
     args = parser.parse_args()
     if args.nodes and args.cpus and args.tasks and args.host:
-        run_slurm_job(
-            args.command,
+        runner = SlurmRunner(
             nodes=args.nodes,
             cpus=args.cpus,
             tasks=args.tasks,
             host=args.host,
-            partition=args.partition
+            partition=args.partition,
         )
+        runner.run(args.command, Path.cwd(), cluster=True, logfile=None, show_progress=False)
     else:
-        run_standard_job(args.command)
+        LocalRunner().run(args.command, Path.cwd(), logfile=None, show_progress=False)
 
     return 0
 

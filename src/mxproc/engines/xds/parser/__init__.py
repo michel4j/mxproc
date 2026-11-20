@@ -88,14 +88,15 @@ def max_sub_range(values: NDArray, size: int) -> Tuple[int, int]:
     return max_index, max_index + size
 
 
-def get_spot_distribution() -> Any:
+def get_spot_distribution(work_dir: Path = Path(".")) -> Any:
     """
     Calculate the percentage of indexed spots per image
 
+    :param work_dir: directory containing SPOT.XDS
     :return: 2D array mapping frame number to percentage of spots indexed.
     """
 
-    data = numpy.loadtxt('SPOT.XDS', comments='!')
+    data = numpy.loadtxt(Path(work_dir) / 'SPOT.XDS', comments='!')
     if len(data.shape) < 2:
         return None, None
 
@@ -140,12 +141,13 @@ class XDSParser(parser.TextParser):
     }
 
     @classmethod
-    def parse_index(cls) -> Result:
+    def parse_index(cls, work_dir: Path = Path(".")) -> Result:
+        work_dir = Path(work_dir)
         details = {}
         problems = IndexProblem.NONE
         try:
-            log_details = cls.parse('IDXREF.LP')
-            param_details = cls.parse('XPARM.XDS', silent=True)
+            log_details = cls.parse(str(work_dir / 'IDXREF.LP'))
+            param_details = cls.parse(str(work_dir / 'XPARM.XDS'), silent=True)
         except (parser.FilesMissing, FileNotFoundError, parser.MissingLexicon) as err:
             logger.exception(err)
             problems |= IndexProblem.SOFTWARE_ERROR
@@ -170,7 +172,7 @@ class XDSParser(parser.TextParser):
             exp_pos_err = log_details.get('exp_pos_err', 3.0)
 
             details['spots'] = log_details.get('spots', {})
-            spot_counts, best_range = get_spot_distribution()
+            spot_counts, best_range = get_spot_distribution(work_dir=work_dir)
             details['spots'].update(counts=spot_counts, best_range=best_range)
 
             # large fraction of rejected spots far from ideal
@@ -250,14 +252,15 @@ class XDSParser(parser.TextParser):
         return Result(state=state, messages=messages, flags=problems, details=details)
 
     @classmethod
-    def parse_xscale(cls):
+    def parse_xscale(cls, work_dir: Path = Path(".")):
         """
         Harvest data from XSCALE
         """
-        if not os.path.exists('XSCALE.LP'):
+        xscale_lp = Path(work_dir) / 'XSCALE.LP'
+        if not xscale_lp.exists():
             return {}
 
-        with open('XSCALE.LP', 'r') as handle:
+        with open(xscale_lp, 'r') as handle:
             data = handle.read()
 
         # extract separate sections corresponding to different datasets
