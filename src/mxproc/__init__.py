@@ -160,6 +160,17 @@ class Analysis(ABC):
 
         return path
 
+    def prepare_experiment_directories(self) -> Dict[str, Path]:
+        """
+        Create per-experiment working directories and register them in options.working_directories.
+        """
+        for experiment in self.experiments:
+            directory = self.options.directory
+            directory = directory if len(self.experiments) == 1 else directory / experiment.name
+            directory.mkdir(parents=True, exist_ok=True)
+            self.options.working_directories[experiment.identifier] = directory
+        return self.options.working_directories
+
     def get_extras(self, args: argparse.Namespace) -> dict:
         """
         Extract Backend specific Parameters from arguments namespace object

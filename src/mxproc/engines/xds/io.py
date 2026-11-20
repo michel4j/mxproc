@@ -418,3 +418,16 @@ def write_xdsconv_input(params: dict, work_dir: Path = Path(".")) -> JobParamete
         outfile.write(file_text)
 
     return JobParameters()
+
+
+def find_lattice(lattice: Lattice, candidates: Sequence[dict]) -> Tuple[Union[Lattice, None], Union[tuple, None]]:
+    """
+    Given a lattice, generate a lattice and reindex matrix from compatible XDS CORRECT candidates.
+    """
+    for candidate in candidates:
+        if lattice.character == candidate['character']:
+            a, b, c, alpha, beta, gamma = candidate['unit_cell']
+            new_lattice = Lattice(spacegroup=lattice.spacegroup, a=a, b=b, c=c, alpha=alpha, beta=beta, gamma=gamma)
+            return new_lattice, candidate['reindex_matrix']
+
+    return None, None

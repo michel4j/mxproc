@@ -20,7 +20,6 @@ from typing import Tuple, Sequence, Any, List, Dict
 import numpy as np
 
 from mxproc.log import logger
-from mxproc.xtal import Lattice
 
 
 class FilesMissing(Exception):
@@ -306,23 +305,6 @@ def show_warnings(label: str, messages: Sequence[str]):
         for i, message in enumerate(messages):
             sym = '├' if i < total - 1 else '└'
             logger.warning(f'{sym} {message}')
-
-
-def find_lattice(lattice: Lattice, candidates: Sequence[dict]) -> Tuple[Lattice, tuple]:
-    """
-    Given a lattice, generate a lattice and reindex matrix, from the compatible spacegroup candidates
-    :param lattice: search lattice
-    :param candidates: candidates from XDS CORRECT
-    :return: lattice, reindex_matrix
-    """
-
-    for candidate in candidates:
-        if lattice.character == candidate['character']:
-            a, b, c, alpha, beta, gamma = candidate['unit_cell']
-            new_lattice = Lattice(spacegroup=lattice.spacegroup, a=a, b=b, c=c, alpha=alpha, beta=beta, gamma=gamma)
-            return new_lattice, candidate['reindex_matrix']
-
-    return None, None
 
 
 def parse_ranges(text: str) -> Sequence[Tuple[int, int]]:

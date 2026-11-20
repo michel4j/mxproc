@@ -16,12 +16,20 @@ import vg
 
 from mxproc import Analysis, reporting, parse_cluster
 from mxproc.command import CommandFailed
-from mxproc.common import StateType, StepType, show_warnings, find_lattice, short_path
-from mxproc.common import generate_failure, Result, select_resolution, ScoreManager, summarize_ranges
+from mxproc.common import StateType, StepType, show_warnings, short_path
+from mxproc.common import generate_failure, Result, select_resolution, summarize_ranges
 from mxproc.engines.xds import io, stats
 from mxproc.engines.xds.indexing import auto_index
 from mxproc.engines.xds.parser import XDSParser, pointless
-from mxproc.xtal import Experiment, Lattice, resolution_shells
+from mxproc.xtal import (
+    Experiment,
+    Lattice,
+    assess_cell_orientation,
+    max_delta_angle,
+    resolution_shells,
+    score_dataset,
+    score_strategy,
+)
 from mxproc.programs import raddose
 from mxproc.log import logger
 
@@ -72,12 +80,9 @@ class XDSAnalysis(Analysis):
     def initialize(self, **kwargs):
         results = {}
         logger.info('Working Directories:')
+        self.prepare_experiment_directories()
         for experiment in self.experiments:
-            # create sub-directories if multiple processing
-            directory = self.options.directory
-            directory = directory if len(self.experiments) == 1 else directory / experiment.name
-            directory.mkdir(parents=True, exist_ok=True)
-            self.options.working_directories[experiment.identifier] = directory
+            directory = self.options.working_directories[experiment.identifier]
             spot_range = [(r[0], r[1]) for r in experiment.frames]
             io_options = {
                 'data_range': experiment.frames,
@@ -214,46 +219,19 @@ class XDSAnalysis(Analysis):
             except (FileNotFoundError, CommandFailed) as err:
                 result = generate_failure(f"Command failed: {err}")
             else:
-                cell_axis = {
-                    ("a", lattice.a): numpy.array(index_result.get('cell_a_axis')),
-                    ("b", lattice.b): numpy.array(index_result.get('cell_b_axis')),
-                    ("c", lattice.c): numpy.array(index_result.get('cell_c_axis')),
-                }
-
-                beam_axis = numpy.array(index_result.get('beam_axis'))
-                spindle_axis = numpy.array(index_result.get('rotation_axis'))
-                axis_angles = [
-                    {
-                        'name': name,
-                        'beam': vg.angle(beam_axis, axis),
-                        'spindle': vg.angle(spindle_axis, axis),
-                        'axis': axis,
-                        'length': length
-                    }
-                    for (name, length), axis in cell_axis.items()
-                ]
-                axis_near_beam = min(axis_angles, key=lambda x: x['beam'])
-                axis_near_spindle = min(axis_angles, key=lambda x: x['spindle'])
-                longest_axis = max(axis_angles, key=lambda x: x['length'])
-                axis_lengths = numpy.array([lattice.a, lattice.b, lattice.c])
-                axis_ratios = numpy.round(axis_lengths / longest_axis['length'], 1)
-
-                has_long_axis = ((axis_ratios <= 0.5).sum() == 2)  # two other axis are less than 50% length of longest
-                long_axis_ratio = 0.0
-
-                warnings = []
-                if longest_axis != axis_near_spindle and has_long_axis:
+                axis_near_beam, longest_axis, long_axis_ratio, warnings = assess_cell_orientation(
+                    lattice,
+                    index_result.get('cell_a_axis'),
+                    index_result.get('cell_b_axis'),
+                    index_result.get('cell_c_axis'),
+                    index_result.get('beam_axis'),
+                    index_result.get('rotation_axis'),
+                )
+                if warnings:
                     logger.warning_value(
                         "- Long Unit-cell axis is closest to beam axis!",
                         f'{longest_axis["name"]}={longest_axis["length"]:0.1f}Å, {longest_axis["beam"]:0.1f}°'
                     )
-                    warnings.append(
-                       f"A long unit cell axis ({longest_axis['name']}={longest_axis['length']:0.1f} Å) "
-                       f"is not optimally oriented relative to the rotation axis. It is {longest_axis['beam']:0.1f}° "
-                       f"from the beam direction! To avoid overlaps, the longest axis should be close to the "
-                       f"rotation axis."
-                    )
-                    long_axis_ratio = longest_axis['beam'] / max(longest_axis['spindle'], 1)
                 else:
                     logger.info_value(
                         f'- Unit-Cell axis closest to beam',
@@ -265,21 +243,12 @@ class XDSAnalysis(Analysis):
 
                 # calculate maximum delta to avoid overlaps - see Dauter, Acta Cryst. (1999). D55, p1707
                 mosaicity = index_result.get('quality.mosaicity', 0.1)
-                max_delta = numpy.degrees(resolution_details['desired_resolution'] / axis_near_beam['length']) - mosaicity
+                max_delta = max_delta_angle(
+                    resolution_details['desired_resolution'], axis_near_beam['length'], mosaicity
+                )
 
                 best_strategy = details['strategies'][-1]
-                score_manager = ScoreManager({
-                    'completeness':  (75.0, 0.2, 0.25),
-                    'resolution': (2.0, 0.2, -3),
-                    'long_axis_ratio': (0, 0.1, -1),
-                    'mosaicity': (0.3, 0.1, -30),
-                    'angle_error': (0.5, 0.1, -2),
-                    'pixel_error': (2.0, 0.1, -2),
-                    'indexed_fraction': (0.5, 0.2, 6),
-                })
-
-                # scoring
-                score = score_manager.score(
+                score = score_strategy(
                     completeness=best_strategy['completeness'],
                     resolution=resolution_details['observed_resolution'],
                     long_axis_ratio=long_axis_ratio,
@@ -456,7 +425,7 @@ class XDSAnalysis(Analysis):
         else:
             self.settings['symmetry_method'] = 'automatically assigned'
 
-        reindex_lattice, reindex_matrix = find_lattice(target_lattice, integrate_result.details['lattices'])
+        reindex_lattice, reindex_matrix = io.find_lattice(target_lattice, integrate_result.details['lattices'])
         if reindex_lattice:
             directory = self.options.working_directories[experiment.identifier]
             if reference != experiment:
@@ -787,49 +756,9 @@ class XDSAnalysis(Analysis):
     @staticmethod
     def score(info: dict) -> float:
         """
-        Calculate and return a data quality score for the quality dictionary
-
-        :param info:
-        :return: float
+        Calculate and return a data quality score for the quality dictionary.
         """
-
-        manager = ScoreManager({
-            'resolution': (2.0, 0.2, -6),
-            'completeness': (75, 0.2, 0.25),
-            'r_meas': (6, 0.2, -1),
-            'i_sigma': (30, 0.1, 0.1),
-            'mosaicity': (0.3, 0.1, -30),
-            'angle_error': (1.0, 0.05, -2),
-            'pixel_error': (2.0, 0.05, -2),
-            'misfit_fraction': (0.1, 0.1, -6),
-        })
-
-        score = 0.0
-
-        if info:
-            # used Result object for easy access to deep fields with defaults
-            quality = Result(state=StateType.SUCCESS, details=info)
-
-            resolution = quality.get('summary.resolution', 20.0)
-            completeness = quality.get('summary.completeness', 0.0)
-            r_meas = quality.get('inner_shell.r_meas', 100.0)
-            i_sigma = quality.get('inner_shell.i_sigma', 0.0)
-            mosaicity = quality.get('summary.mosaicity', 0.0)
-            angle_error = quality.get('summary.angle_error', 0.0)
-            pixel_error = quality.get('summary.pixel_error', 0.0)
-            misfit_fraction = quality.get('summary.misfits', 0.0) / quality.get('summary.reflections', 1.0)
-
-            score = manager.score(
-                resolution=resolution,
-                completeness=completeness,
-                r_meas=r_meas,
-                i_sigma=i_sigma,
-                mosaicity=mosaicity,
-                angle_error=angle_error,
-                pixel_error=pixel_error,
-                misfit_fraction=misfit_fraction
-            )
-        return score
+        return score_dataset(info)
 
     def report(self, **kwargs):
         payload = reporting.build_report_payload(self)

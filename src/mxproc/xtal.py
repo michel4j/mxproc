@@ -7,8 +7,11 @@ from typing import Sequence, Tuple, Union
 
 import itertools
 import numpy
+import vg
 from mxio import DataSet, XYPair, Geometry
 from numpy.typing import ArrayLike
+
+from mxproc.common import Result, ScoreManager, StateType
 
 SPACEGROUP_NAMES = {
     1: 'P1', 2: 'P-1', 3: 'P2', 4: 'P2₁', 5: 'C2', 6: 'Pm', 7: 'Pc', 8: 'Cm', 9: 'Cc', 10: 'P2/m', 11: 'P2₁/m',
@@ -306,3 +309,122 @@ def resolution_shells(resolution: float) -> ArrayLike:
         return numpy.round(numpy.sqrt(1/(numpy.linspace(1.0/6**2, 1.0/resolution**2, count))), 2)
     else:
         return []
+
+
+def assess_cell_orientation(
+    lattice: Lattice,
+    cell_a_axis: Sequence[float],
+    cell_b_axis: Sequence[float],
+    cell_c_axis: Sequence[float],
+    beam_axis: Sequence[float],
+    rotation_axis: Sequence[float],
+) -> Tuple[dict, dict, float, list[str]]:
+    """
+    Assess unit-cell axis orientation relative to beam and spindle axes.
+    Returns (axis_near_beam, longest_axis, long_axis_ratio, warnings).
+    """
+    cell_axis = {
+        ("a", lattice.a): numpy.array(cell_a_axis),
+        ("b", lattice.b): numpy.array(cell_b_axis),
+        ("c", lattice.c): numpy.array(cell_c_axis),
+    }
+    beam = numpy.array(beam_axis)
+    spindle = numpy.array(rotation_axis)
+    axis_angles = [
+        {
+            'name': name,
+            'beam': float(vg.angle(beam, axis)),
+            'spindle': float(vg.angle(spindle, axis)),
+            'axis': axis,
+            'length': length,
+        }
+        for (name, length), axis in cell_axis.items()
+    ]
+    axis_near_beam = min(axis_angles, key=lambda x: x['beam'])
+    axis_near_spindle = min(axis_angles, key=lambda x: x['spindle'])
+    longest_axis = max(axis_angles, key=lambda x: x['length'])
+    axis_lengths = numpy.array([lattice.a, lattice.b, lattice.c])
+    axis_ratios = numpy.round(axis_lengths / longest_axis['length'], 1)
+    has_long_axis = bool((axis_ratios <= 0.5).sum() == 2)
+
+    long_axis_ratio = 0.0
+    warnings: list[str] = []
+    if longest_axis != axis_near_spindle and has_long_axis:
+        warnings.append(
+            f"A long unit cell axis ({longest_axis['name']}={longest_axis['length']:0.1f} Å) "
+            f"is not optimally oriented relative to the rotation axis. It is {longest_axis['beam']:0.1f}° "
+            f"from the beam direction! To avoid overlaps, the longest axis should be close to the "
+            f"rotation axis."
+        )
+        long_axis_ratio = longest_axis['beam'] / max(longest_axis['spindle'], 1.0)
+
+    return axis_near_beam, longest_axis, long_axis_ratio, warnings
+
+
+def max_delta_angle(resolution: float, axis_length: float, mosaicity: float) -> float:
+    """
+    Maximum oscillation delta angle to avoid spot overlaps (Dauter, Acta Cryst. D55, 1999, p1707).
+    """
+    return float(numpy.degrees(resolution / axis_length) - mosaicity)
+
+
+def score_strategy(
+    completeness: float,
+    resolution: float,
+    long_axis_ratio: float,
+    mosaicity: float,
+    angle_error: float,
+    pixel_error: float,
+    indexed_fraction: float,
+) -> float:
+    """
+    Calculate a data-collection strategy quality score.
+    """
+    manager = ScoreManager({
+        'completeness': (75.0, 0.2, 0.25),
+        'resolution': (2.0, 0.2, -3),
+        'long_axis_ratio': (0, 0.1, -1),
+        'mosaicity': (0.3, 0.1, -30),
+        'angle_error': (0.5, 0.1, -2),
+        'pixel_error': (2.0, 0.1, -2),
+        'indexed_fraction': (0.5, 0.2, 6),
+    })
+    return float(manager.score(
+        completeness=completeness,
+        resolution=resolution,
+        long_axis_ratio=long_axis_ratio,
+        mosaicity=mosaicity,
+        angle_error=angle_error,
+        pixel_error=pixel_error,
+        indexed_fraction=indexed_fraction,
+    ))
+
+
+def score_dataset(info: dict) -> float:
+    """
+    Calculate a data quality score for a scaled/symmetry quality dictionary.
+    """
+    if not info:
+        return 0.0
+
+    manager = ScoreManager({
+        'resolution': (2.0, 0.2, -6),
+        'completeness': (75, 0.2, 0.25),
+        'r_meas': (6, 0.2, -1),
+        'i_sigma': (30, 0.1, 0.1),
+        'mosaicity': (0.3, 0.1, -30),
+        'angle_error': (1.0, 0.05, -2),
+        'pixel_error': (2.0, 0.05, -2),
+        'misfit_fraction': (0.1, 0.1, -6),
+    })
+    quality = Result(state=StateType.SUCCESS, details=info)
+    return float(manager.score(
+        resolution=quality.get('summary.resolution', 20.0),
+        completeness=quality.get('summary.completeness', 0.0),
+        r_meas=quality.get('inner_shell.r_meas', 100.0),
+        i_sigma=quality.get('inner_shell.i_sigma', 0.0),
+        mosaicity=quality.get('summary.mosaicity', 0.0),
+        angle_error=quality.get('summary.angle_error', 0.0),
+        pixel_error=quality.get('summary.pixel_error', 0.0),
+        misfit_fraction=quality.get('summary.misfits', 0.0) / quality.get('summary.reflections', 1.0),
+    ))

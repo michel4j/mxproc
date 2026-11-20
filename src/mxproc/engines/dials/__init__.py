@@ -9,12 +9,9 @@ class DIALSAnalysis(Analysis):
     def initialize(self, **kwargs):
         results = {}
         logger.info('Preparing Working directories:')
+        self.prepare_experiment_directories()
         for experiment in self.experiments:
-            directory = self.options.directory
-            directory = directory if len(self.experiments) == 1 else directory / experiment.name
-            directory.mkdir(exist_ok=True)
-            self.options.working_directories[experiment.identifier] = directory
-
+            directory = self.options.working_directories[experiment.identifier]
             wildcard = str(experiment.directory / experiment.glob)
 
             logger.info_value(f' - {experiment.name}', str(directory))
@@ -50,9 +47,6 @@ class DIALSAnalysis(Analysis):
             self.runner.run('dials.integrate refined.expt refined.refl', work_dir, desc="Integrating images")
 
         return results
-
-    def report(self):
-        pass
 
     def strategy(self, **kwargs):
         pass
