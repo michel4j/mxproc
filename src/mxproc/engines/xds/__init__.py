@@ -300,9 +300,11 @@ class XDSAnalysis(Analysis):
                 io.XDSParameters(**io_options),
                 work_dir=work_dir,
             )
-            single_node_job = replace(
-                job, nodes=1, tasks=1, cpus=job.cpus * job.tasks // max(1, job.nodes)
-            )
+            job_params = {'nodes': 1, 'tasks': 1, 'cpus': None}
+            if job.cpus and job.tasks and job.nodes:
+                job_params['cpus'] = job.cpus * job.tasks // max(1, job.nodes)
+            single_node_job = replace(job, **job_params)
+
             try:
                 self.runner.run(
                     'xds_par',
@@ -579,9 +581,11 @@ class XDSAnalysis(Analysis):
                 job = io.create_input_file(
                     ('CORRECT',), experiment, io.XDSParameters(**io_options), work_dir=directory
                 )
-                single_node_job = replace(
-                    job, nodes=1, tasks=1, cpus=job.cpus * job.tasks // max(1, job.nodes)
-                )
+
+                job_params = {'nodes': 1, 'tasks': 1, 'cpus': None}
+                if job.cpus and job.tasks and job.nodes:
+                    job_params['cpus'] = job.cpus * job.tasks // max(1, job.nodes)
+                single_node_job = replace(job, **job_params)
 
                 self.runner.run(
                     'xds_par',
