@@ -32,15 +32,9 @@ requires-python = ">=3.10,<4.0"
 [project.urls]
 Homepage = "https://github.com/michel4j/mxproc"
 Issues = "https://github.com/michel4j/mxproc/issues"
-
-
-[tool.poetry]
-packages = [
-    { include = "mxproc", from = "." },
-]
 version = "0.0.0"
 
-[tool.poetry.scripts]
+[project.scripts]
 "auto.init" = "mxproc.scripts:auto_init"
 "auto.xds" = "mxproc.scripts:auto_xds"
 "auto.index" = "mxproc.scripts:auto_index"
@@ -53,13 +47,20 @@ version = "0.0.0"
 "auto.signal" = "mxproc.programs.dozor:process_signal"
 
 [build-system]
-requires = ["poetry-core>=2.0.0,<3.0.0", "poetry-dynamic-versioning>=1.0.0,<2.0.0"]
-build-backend = "poetry_dynamic_versioning.backend"
+requires = ["hatchling"]
+build-backend = "hatchling.build"
 
-[tool.poetry.requires-plugins]
-poetry-dynamic-versioning = { version = ">=1.0.0,<2.0.0", extras = ["plugin"] }
+[tool.uv]
+package = true
 
-[tool.poetry-dynamic-versioning]
-enable = true
+[tool.hatch.version]
+source = "uv-dynamic-versioning"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/mxproc"]
+
+[tool.uv-dynamic-versioning]
 vcs = "git"
+style = "pep440" # Options: "pep440", "semver", "pvp"
+fallback-version = "0.0.0" # Used if building outside a Git repo (e.g., from an sdist)
 format = "{base}.{revision}{distance}"

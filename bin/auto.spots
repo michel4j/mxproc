@@ -1,8 +1,0 @@
-#!/usr/bin/env python3
-
-import sys
-from mxproc.scripts import auto_spots
-
-
-if __name__ == "__main__":
-    sys.exit(auto_spots())
