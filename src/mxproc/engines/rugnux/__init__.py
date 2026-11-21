@@ -6,7 +6,8 @@ from typing import Any, Dict
 
 from mxio import XYPair
 from mxproc import Analysis, reporting
-from mxproc.common import Result, StateType, short_path
+from mxproc.command import CommandFailed
+from mxproc.common import Result, StateType, Step, Workflow, short_path
 from mxproc.engines.rugnux.models import PlotTable, RugnuxReport
 from mxproc.engines.rugnux.parser import (
     build_rugnux_command,
@@ -16,11 +17,28 @@ from mxproc.engines.rugnux.parser import (
 from mxproc.engines.rugnux.report import build_report
 from mxproc.engines.rugnux.scoring import compute_score
 from mxproc.log import logger
-from mxproc.xtal import Lattice, lattice_point_groups, spacegroup_character
+from mxproc.xtal import Lattice
+
+STEP_INITIALIZE = Step("initialize", "Initialization")
+STEP_PROCESS = Step("process", "Rugnux Processing")
+STEP_REPORT = Step("report", "Reports", checkpoint=False)
+
+OUTPUT_CANDIDATES = (
+    ("mtz", "{prefix}.mtz"),
+    ("unmerged_mtz", "{prefix}_unmerged.mtz"),
+    ("cif", "{prefix}.cif"),
+    ("hkl", "{prefix}.hkl"),
+    ("report", "{prefix}_report.txt"),
+    ("plot", "{prefix}_plot.txt"),
+)
 
 
 class RUGNUXAnalysis(Analysis):
     prefix = "rugnux"
+    workflows = {
+        Workflow.PROCESS: (STEP_INITIALIZE, STEP_PROCESS, STEP_REPORT),
+        Workflow.SCREEN: (STEP_INITIALIZE, STEP_PROCESS, STEP_REPORT),
+    }
 
     def __init__(self, args: argparse.Namespace, runner=None):
         super().__init__(args, runner=runner)
@@ -38,15 +56,20 @@ class RUGNUXAnalysis(Analysis):
             extras["lattice"] = Lattice(spacegroup=args.spacegroup)
         return extras
 
-    def initialize(self, **kwargs):
+    def initialize(self, **kwargs) -> Dict[str, Result]:
+        results: Dict[str, Result] = {}
         logger.info("Preparing Working directories:")
         self.prepare_experiment_directories()
         for experiment in self.experiments:
             directory = self.options.working_directories[experiment.identifier]
             logger.info_value(f" - {experiment.name}", str(directory))
+            results[experiment.identifier] = Result(
+                state=StateType.SUCCESS,
+                details={"directory": directory},
+            )
         self.settings["symmetry_method"] = "determined by Rugnux"
         self.settings["resolution_method"] = "CC1/2 fall-off by Rugnux"
-        return {}
+        return results
 
     def _run_dir_for(self, experiment) -> Path:
         if self.options.merge:
@@ -63,56 +86,26 @@ class RUGNUXAnalysis(Analysis):
             "resolution": self.options.extras.get("resolution_limit"),
             "beam_center": (beam_center.x, beam_center.y) if beam_center else None,
             "frames": self.options.extras.get("frames"),
-            "no_merge": self.options.screen,
+            "no_merge": self.workflow == Workflow.SCREEN,
         }
 
     def _load_outputs(self, work_dir: Path) -> tuple[RugnuxReport, PlotTable | None]:
-        rep = parse_report(work_dir / f"{self.prefix}_report.txt")
+        report_path = work_dir / f"{self.prefix}_report.txt"
+        if not report_path.is_file():
+            raise CommandFailed(f"Rugnux report file missing: {report_path}")
+        rep = parse_report(report_path)
         plot_path = work_dir / f"{self.prefix}_plot.txt"
         plot = parse_plot(plot_path) if plot_path.is_file() else None
         return rep, plot
 
-    def _ensure_rugnux(self) -> dict[str, tuple[RugnuxReport, PlotTable | None]]:
-        if self._reports and all(expt.identifier in self._reports for expt in self.experiments):
-            return self._reports
-
-        cmd_kwargs = self._build_command_args()
-        report_name = f"{self.prefix}_report.txt"
-
-        if self.options.merge and len(self.experiments) > 1:
-            work_dir = self.options.directory
-            report_path = work_dir / report_name
-            if not report_path.exists():
-                inputs = [expt.directory / expt.reference for expt in self.experiments]
-                cmd = build_rugnux_command(inputs, **cmd_kwargs)
-                names = ", ".join(expt.name for expt in self.experiments)
-                self.runner.run(
-                    cmd,
-                    work_dir,
-                    desc=f"Running Rugnux on {names}",
-                    check_files=[report_name],
-                )
-            parsed = self._load_outputs(work_dir)
-            for expt in self.experiments:
-                self._reports[expt.identifier] = parsed
-            return self._reports
-
-        for expt in self.experiments:
-            if expt.identifier in self._reports:
-                continue
-            work_dir = self._run_dir_for(expt)
-            report_path = work_dir / report_name
-            if not report_path.exists():
-                cmd = build_rugnux_command([expt.directory / expt.reference], **cmd_kwargs)
-                self.runner.run(
-                    cmd,
-                    work_dir,
-                    desc=f"{expt.name}: Running Rugnux",
-                    check_files=[report_name],
-                )
-            self._reports[expt.identifier] = self._load_outputs(work_dir)
-
-        return self._reports
+    def _collect_outputs(self, run_dir: Path) -> dict[str, str]:
+        outputs: dict[str, str] = {}
+        for key, template in OUTPUT_CANDIDATES:
+            filename = template.format(prefix=self.prefix)
+            path = run_dir / filename
+            if path.exists():
+                outputs[key] = str(short_path(path, self.options.directory))
+        return outputs
 
     @staticmethod
     def _state_for(rep: RugnuxReport) -> StateType:
@@ -139,21 +132,6 @@ class RUGNUXAnalysis(Analysis):
         if len(res_range) >= 2:
             return res_range[1]
         return 20.0
-
-    @staticmethod
-    def _candidates_for(rep: RugnuxReport, lattice: Lattice) -> list[dict[str, Any]]:
-        sg_number = lattice.spacegroup
-        sg_name = rep.get_str("SPACE_GROUP_NAME") or lattice.name
-        candidates: list[dict[str, Any]] = [{"name": sg_name, "number": sg_number, "probability": 1.0}]
-        for key in ("SPACE_GROUP_ALTERNATIVES", "SPACE_GROUP_ACHIRAL_ALTERNATIVES"):
-            raw = rep.get_str(key)
-            if not raw:
-                continue
-            for alt in raw.split(","):
-                alt_name = alt.strip()
-                if alt_name and alt_name != sg_name:
-                    candidates.append({"name": alt_name, "number": sg_number, "probability": 0.5})
-        return candidates
 
     @staticmethod
     def _shell_dicts(rep: RugnuxReport) -> list[dict[str, Any]]:
@@ -193,128 +171,54 @@ class RUGNUXAnalysis(Analysis):
             "i_sigma_a": rep.get_float("ISA"),
         }
 
-    def find_spots(self, **kwargs) -> Dict[str, Result]:
-        reports = self._ensure_rugnux()
-        results: Dict[str, Result] = {}
-        for expt in self.experiments:
-            rep, _ = reports[expt.identifier]
-            results[expt.identifier] = Result(
-                state=self._state_for(rep),
-                messages=tuple(rep.warnings),
-                details={"images_processed": rep.get_int("IMAGES_PROCESSED", 0) or 0},
-            )
-        return results
+    def process(self, **kwargs) -> Dict[str, Result]:
+        cmd_kwargs = self._build_command_args()
+        report_name = f"{self.prefix}_report.txt"
+        self._reports = {}
 
-    def index(self, **kwargs) -> Dict[str, Result]:
-        reports = self._ensure_rugnux()
-        results: Dict[str, Result] = {}
-        for expt in self.experiments:
-            rep, _ = reports[expt.identifier]
-            lattice = self._lattice_for(rep)
-            character = spacegroup_character(lattice.spacegroup)
-            lattices = [
-                {
-                    "index": 1,
-                    "character": character,
-                    "quality": 0.0,
-                    "unit_cell": (lattice.a, lattice.b, lattice.c, lattice.alpha, lattice.beta, lattice.gamma),
-                }
-            ]
-            results[expt.identifier] = Result(
-                state=self._state_for(rep),
-                messages=tuple(rep.warnings),
-                details={
-                    "lattice": lattice,
-                    "symmetry_lattice": lattice,
-                    "lattices": lattices,
-                    "point_groups": lattice_point_groups(character),
-                    "quality": {"pixel_error": 0.0, "angle_error": -1.0},
-                },
+        if self.options.merge and len(self.experiments) > 1:
+            work_dir = self.options.directory
+            inputs = [expt.directory / expt.reference for expt in self.experiments]
+            cmd = build_rugnux_command(inputs, **cmd_kwargs)
+            names = ", ".join(expt.name for expt in self.experiments)
+            self.runner.run(
+                cmd,
+                work_dir,
+                desc=f"Running Rugnux on {names}",
+                check_files=[report_name],
             )
-        return results
+            parsed = self._load_outputs(work_dir)
+            for expt in self.experiments:
+                self._reports[expt.identifier] = parsed
+        else:
+            for expt in self.experiments:
+                work_dir = self._run_dir_for(expt)
+                cmd = build_rugnux_command([expt.directory / expt.reference], **cmd_kwargs)
+                self.runner.run(
+                    cmd,
+                    work_dir,
+                    desc=f"{expt.name}: Running Rugnux",
+                    check_files=[report_name],
+                )
+                self._reports[expt.identifier] = self._load_outputs(work_dir)
 
-    def strategy(self, **kwargs) -> Dict[str, Result]:
-        reports = self._ensure_rugnux()
         results: Dict[str, Result] = {}
+        all_outputs: dict[str, str] = {}
         for expt in self.experiments:
-            rep, _ = reports[expt.identifier]
-            summary = self._summary_dict(rep)
-            results[expt.identifier] = Result(
-                state=self._state_for(rep),
-                messages=tuple(rep.warnings),
-                details={
-                    "quality": {
-                        "score": summary["score"],
-                        "mosaicity": rep.get_float("MOSAICITY_DEG", 0.0) or 0.0,
-                        "resolution": summary["resolution"],
-                        "warnings": tuple(rep.warnings),
-                    },
-                    "strategy": {"resolution": summary["resolution"]},
-                    "statistics": [],
-                },
-            )
-        return results
-
-    def integrate(self, **kwargs) -> Dict[str, Result]:
-        reports = self._ensure_rugnux()
-        results: Dict[str, Result] = {}
-        for expt in self.experiments:
-            rep, _ = reports[expt.identifier]
-            lattice = self._lattice_for(rep)
-            character = spacegroup_character(lattice.spacegroup)
-            lattices = [
-                {
-                    "index": 1,
-                    "character": character,
-                    "quality": 0.0,
-                    "unit_cell": (lattice.a, lattice.b, lattice.c, lattice.alpha, lattice.beta, lattice.gamma),
-                }
-            ]
-            results[expt.identifier] = Result(
-                state=self._state_for(rep),
-                messages=tuple(rep.warnings),
-                details={
-                    "lattices": lattices,
-                    "quality": {"errors": []},
-                },
-            )
-        return results
-
-    def symmetry(self, **kwargs) -> Dict[str, Result]:
-        reports = self._ensure_rugnux()
-        results: Dict[str, Result] = {}
-        for expt in self.experiments:
-            rep, _ = reports[expt.identifier]
+            run_dir = self._run_dir_for(expt)
+            rep, _ = self._reports[expt.identifier]
             lattice = self._lattice_for(rep)
             summary = self._summary_dict(rep)
-            results[expt.identifier] = Result(
-                state=self._state_for(rep),
-                messages=tuple(rep.warnings),
-                details={
-                    "lattice": lattice,
-                    "symmetry": {"candidates": self._candidates_for(rep, lattice)},
-                    "quality": {
-                        "summary": summary,
-                        "frames": [],
-                        "differences": [],
-                    },
-                },
-            )
-        return results
-
-    def scale(self, **kwargs) -> Dict[str, Result]:
-        reports = self._ensure_rugnux()
-        results: Dict[str, Result] = {}
-        for expt in self.experiments:
-            rep, _ = reports[expt.identifier]
-            lattice = self._lattice_for(rep)
-            summary = self._summary_dict(rep)
+            expt_outputs = self._collect_outputs(run_dir)
+            all_outputs.update(expt_outputs)
             self.show_quality(expt.name, lattice, summary)
             results[expt.identifier] = Result(
                 state=self._state_for(rep),
                 messages=tuple(rep.warnings),
                 details={
+                    "verdict": rep.verdict,
                     "lattice": lattice,
+                    "outputs": expt_outputs,
                     "quality": {
                         "summary": summary,
                         "statistics": self._shell_dicts(rep),
@@ -322,30 +226,6 @@ class RUGNUXAnalysis(Analysis):
                     },
                 },
             )
-        return results
-
-    def export(self, **kwargs) -> Dict[str, Result]:
-        self._ensure_rugnux()
-        results: Dict[str, Result] = {}
-        all_outputs: dict[str, str] = {}
-        candidates = (
-            ("mtz", f"{self.prefix}.mtz"),
-            ("unmerged_mtz", f"{self.prefix}_unmerged.mtz"),
-            ("cif", f"{self.prefix}.cif"),
-            ("hkl", f"{self.prefix}.hkl"),
-            ("report", f"{self.prefix}_report.txt"),
-            ("plot", f"{self.prefix}_plot.txt"),
-        )
-        for expt in self.experiments:
-            run_dir = self._run_dir_for(expt)
-            expt_outputs: dict[str, str] = {}
-            for key, filename in candidates:
-                path = run_dir / filename
-                if path.exists():
-                    rel = short_path(path, self.options.directory)
-                    expt_outputs[key] = str(rel)
-                    all_outputs[key] = str(rel)
-            results[expt.identifier] = Result(state=StateType.SUCCESS, details=expt_outputs)
 
         self.settings["reflection_files"] = all_outputs
         return results
@@ -367,13 +247,23 @@ class RUGNUXAnalysis(Analysis):
         """Calculate and return a 0.0-1.0 quality score for a parsed RugnuxReport."""
         return compute_score(info)
 
+    def _get_outputs_for(self, expt) -> tuple[RugnuxReport, PlotTable | None]:
+        if expt.identifier in self._reports:
+            return self._reports[expt.identifier]
+        work_dir = self._run_dir_for(expt)
+        parsed = self._load_outputs(work_dir)
+        self._reports[expt.identifier] = parsed
+        return parsed
+
     def report(self, **kwargs):
-        reports = self._ensure_rugnux()
+        if not self.experiments:
+            raise CommandFailed("No experiments available to report on!")
+
         outputs = self.settings.get("reflection_files", {})
 
         if self.options.merge or len(self.experiments) == 1:
             expt = self.experiments[0]
-            rep, plot = reports[expt.identifier]
+            rep, plot = self._get_outputs_for(expt)
             report_dict = build_report(rep, plot, directory=self.options.directory)
             reporting.save_report(report_dict, self.options.directory, outputs=outputs)
             html_path = self.options.directory / "report.html"
@@ -382,7 +272,7 @@ class RUGNUXAnalysis(Analysis):
 
         for expt in self.experiments:
             work_dir = self._run_dir_for(expt)
-            rep, plot = reports[expt.identifier]
+            rep, plot = self._get_outputs_for(expt)
             report_dict = build_report(rep, plot, directory=work_dir)
             reporting.save_report(report_dict, work_dir, outputs=outputs)
             html_path = work_dir / "report.html"

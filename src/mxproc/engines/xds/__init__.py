@@ -16,11 +16,12 @@ import vg
 
 from mxproc import Analysis, reporting, parse_cluster
 from mxproc.command import CommandFailed
-from mxproc.common import StateType, StepType, show_warnings, short_path
+from mxproc.common import StateType, Step, Workflow, show_warnings, short_path
 from mxproc.common import generate_failure, Result, select_resolution, summarize_ranges
 from mxproc.engines.xds import io, stats
 from mxproc.engines.xds.indexing import auto_index
 from mxproc.engines.xds.parser import XDSParser, pointless
+from mxproc.engines.xds.report import build_report_payload
 from mxproc.xtal import (
     Experiment,
     Lattice,
@@ -34,8 +35,38 @@ from mxproc.programs import raddose
 from mxproc.log import logger
 
 
+STEP_INITIALIZE = Step("initialize", "Initialization")
+STEP_SPOTS = Step("spots", "Spot Search", method="find_spots")
+STEP_INDEX = Step("index", "Auto-Indexing & Refinement")
+STEP_STRATEGY = Step("strategy", "Determining Optimal Strategy")
+STEP_INTEGRATE = Step("integrate", "Integration of Intensities")
+STEP_SYMMETRY = Step("symmetry", "Determining & Applying Symmetry")
+STEP_SCALE = Step("scale", "Scaling Intensities")
+STEP_EXPORT = Step("export", "Data Export")
+STEP_REPORT = Step("report", "Reports", checkpoint=False)
+
+
 class XDSAnalysis(Analysis):
     prefix = 'xds'
+    workflows = {
+        Workflow.SCREEN: (
+            STEP_INITIALIZE,
+            STEP_SPOTS,
+            STEP_INDEX,
+            STEP_STRATEGY,
+            STEP_REPORT,
+        ),
+        Workflow.PROCESS: (
+            STEP_INITIALIZE,
+            STEP_SPOTS,
+            STEP_INDEX,
+            STEP_INTEGRATE,
+            STEP_SYMMETRY,
+            STEP_SCALE,
+            STEP_EXPORT,
+            STEP_REPORT,
+        ),
+    }
 
     def get_extras(self, args: argparse.Namespace) -> dict:
         extras = {}
@@ -138,7 +169,7 @@ class XDSAnalysis(Analysis):
         results = {}
         for experiment in self.experiments:
             # skip if the find_spots step did not succeed
-            if not self.get_step_result(experiment, StepType.SPOTS):
+            if not self.get_step_result(experiment, STEP_SPOTS):
                 continue
 
             work_dir = self.options.working_directories[experiment.identifier]
@@ -181,7 +212,7 @@ class XDSAnalysis(Analysis):
         results = {}
         for experiment in self.experiments:
             work_dir = self.options.working_directories[experiment.identifier]
-            index_result = self.get_step_result(experiment, StepType.INDEX)
+            index_result = self.get_step_result(experiment, STEP_INDEX)
             if not index_result: continue
             lattice = index_result.get('symmetry_lattice')
             spot_range = [(r[0], r[1]) for r in experiment.frames]
@@ -302,7 +333,7 @@ class XDSAnalysis(Analysis):
         for experiment in self.experiments:
             work_dir = self.options.working_directories[experiment.identifier]
 
-            if not self.get_step_result(experiment, StepType.INDEX):
+            if not self.get_step_result(experiment, STEP_INDEX):
                 continue
 
             logger.info(f'{experiment.name}:')
@@ -317,7 +348,7 @@ class XDSAnalysis(Analysis):
 
             range_text = summarize_ranges(io_options['data_range'])
 
-            previous_integration = self.get_step_result(experiment, StepType.INTEGRATE)
+            previous_integration = self.get_step_result(experiment, STEP_INTEGRATE)
             if self.options.optimize and previous_integration is not None:
                 # copy parameter to new file
                 shutil.copy(work_dir / 'GXPARM.XDS', work_dir / 'XPARM.XDS')
@@ -375,7 +406,7 @@ class XDSAnalysis(Analysis):
         for experiment in self.experiments:
             work_dir = self.options.working_directories[experiment.identifier]
 
-            if self.get_step_result(experiment, StepType.INTEGRATE):
+            if self.get_step_result(experiment, STEP_INTEGRATE):
                 logger.info(f'{experiment.name}:')
                 symmetry_experiments.append(experiment)
                 try:
@@ -418,7 +449,7 @@ class XDSAnalysis(Analysis):
         :param reference: Reference experiment
         """
         logger.info(f'{experiment.name}:')
-        integrate_result = self.get_step_result(experiment, StepType.INTEGRATE)
+        integrate_result = self.get_step_result(experiment, STEP_INTEGRATE)
         target_lattice = self.options.extras.get('lattice', reference.lattice)
         if target_lattice != reference.lattice:
             self.settings['symmetry_method'] = 'manually chosen'
@@ -506,7 +537,7 @@ class XDSAnalysis(Analysis):
         scalable_experiments = {
             experiment.name: experiment
             for experiment in self.experiments
-            if self.get_step_result(experiment, StepType.SYMMETRY)
+            if self.get_step_result(experiment, STEP_SYMMETRY)
         }
         if not scalable_experiments:
             logger.error('Skipping! No datasets available to scale!')
@@ -525,7 +556,7 @@ class XDSAnalysis(Analysis):
             resolutions = []
             for name, experiment in scalable_experiments.items():
                 directory = self.options.working_directories[experiment.identifier]
-                symmetry_result = self.get_step_result(experiment, StepType.SYMMETRY)
+                symmetry_result = self.get_step_result(experiment, STEP_SYMMETRY)
                 quality_contrib["XSCALE.HKL"].append(symmetry_result.get('quality.summary'))
                 input_file = str(Path(os.path.relpath(directory / "XDS_ASCII.HKL", self.options.directory)))
                 resolution = symmetry_result.get('quality.summary.resolution')
@@ -544,7 +575,7 @@ class XDSAnalysis(Analysis):
             method = "Separate Output"
             for name, experiment in scalable_experiments.items():
                 directory = self.options.working_directories[experiment.identifier]
-                symmetry_result = self.get_step_result(experiment, StepType.SYMMETRY)
+                symmetry_result = self.get_step_result(experiment, STEP_SYMMETRY)
                 input_file = str(Path(os.path.relpath(directory / "XDS_ASCII.HKL", self.options.directory)))
                 output_file = str(Path(os.path.relpath(directory / "XSCALE.HKL", self.options.directory)))
                 resolution = symmetry_result.get('quality.summary.resolution')
@@ -761,7 +792,7 @@ class XDSAnalysis(Analysis):
         return score_dataset(info)
 
     def report(self, **kwargs):
-        payload = reporting.build_report_payload(self)
+        payload = build_report_payload(self)
         for html_path in reporting.generate_reports(payload):
             report_file = short_path(html_path, self.options.directory.parent)
             logger.info(f'- HTML report: {report_file}')

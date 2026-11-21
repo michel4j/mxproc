@@ -7,13 +7,11 @@ from unittest.mock import patch
 
 from mxio import XYPair
 from mxproc import Application
-from mxproc.common import StateType, StepType
+from mxproc.common import StateType, Workflow
 from mxproc.engines.rugnux import RUGNUXAnalysis
 from mxproc.engines.rugnux.parser import (
-    DEFAULT_RUGNUX_BIN,
     build_rugnux_command,
     parse_plot_text,
-    parse_report,
     parse_report_text,
     resolve_rugnux_binary,
 )
@@ -135,12 +133,10 @@ class RugnuxParserTests(unittest.TestCase):
 
         with patch.dict(os.environ, {}, clear=False):
             os.environ.pop("RUGNUX_BIN", None)
+            with patch("shutil.which", return_value="/usr/local/bin/rugnux"):
+                self.assertEqual(resolve_rugnux_binary(), "/usr/local/bin/rugnux")
             with patch("shutil.which", return_value=None):
-                resolved = resolve_rugnux_binary()
-                if DEFAULT_RUGNUX_BIN.exists():
-                    self.assertEqual(resolved, str(DEFAULT_RUGNUX_BIN))
-                else:
-                    self.assertEqual(resolved, "rugnux")
+                self.assertEqual(resolve_rugnux_binary(), "rugnux")
 
     def test_build_rugnux_command_formats_options(self):
         cmd = build_rugnux_command(
@@ -214,10 +210,13 @@ class RugnuxAnalysisTests(unittest.TestCase):
             with patch("mxproc.load_multiple", return_value=[expt]):
                 args.images = [str(data_dir / expt.reference)]
                 analysis = RUGNUXAnalysis(args, runner=runner)
-                exit_code = analysis.run(step=StepType.INITIALIZE)
+                exit_code = analysis.run()
 
             self.assertEqual(exit_code, 0)
             self.assertEqual(len(runner.calls), 1)
+            self.assertTrue((out_dir / "initialize.meta").exists())
+            self.assertTrue((out_dir / "process.meta").exists())
+            self.assertFalse((out_dir / "report.meta").exists())
             self.assertTrue((out_dir / "report.html").exists())
             self.assertTrue((out_dir / "report.json").exists())
             self.assertTrue((out_dir / "report.txt").exists())
@@ -229,12 +228,12 @@ class RugnuxAnalysisTests(unittest.TestCase):
             self.assertIn("Statistics of Final Reflections by Shell", titles)
             self.assertIn("Diagnostics & Warnings", titles)
 
-            scale_res = analysis.get_step_result(expt, StepType.SCALE)
-            self.assertIsNotNone(scale_res)
-            self.assertEqual(scale_res.state, StateType.WARNING)
-            self.assertEqual(scale_res.get("lattice").spacegroup, 197)
-            self.assertAlmostEqual(scale_res.get("quality.summary.r_meas"), 3.83)
-            self.assertAlmostEqual(scale_res.get("quality.summary.cc_half"), 99.92)
+            process_res = analysis.get_step_result(expt, "process")
+            self.assertIsNotNone(process_res)
+            self.assertEqual(process_res.state, StateType.WARNING)
+            self.assertEqual(process_res.get("lattice").spacegroup, 197)
+            self.assertAlmostEqual(process_res.get("quality.summary.r_meas"), 3.83)
+            self.assertAlmostEqual(process_res.get("quality.summary.cc_half"), 99.92)
             self.assertEqual(analysis.settings["reflection_files"]["mtz"], "rugnux.mtz")
 
     def test_multi_sweep_merge_runs_rugnux_once(self):
@@ -256,7 +255,7 @@ class RugnuxAnalysisTests(unittest.TestCase):
 
             with patch("mxproc.load_multiple", return_value=[expt1, expt2]):
                 analysis = RUGNUXAnalysis(args, runner=runner)
-                exit_code = analysis.run(step=StepType.INITIALIZE)
+                exit_code = analysis.run()
 
             self.assertEqual(exit_code, 0)
             self.assertEqual(len(runner.calls), 1)
@@ -264,6 +263,64 @@ class RugnuxAnalysisTests(unittest.TestCase):
             self.assertEqual(work_dir, out_dir)
             self.assertIn("ds1_master.h5", cmd)
             self.assertIn("ds2_master.h5", cmd)
+
+    def test_screen_workflow_passes_no_merge(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            data_dir = tmp_path / "data"
+            out_dir = tmp_path / "work"
+            data_dir.mkdir()
+            expt = _make_experiment(data_dir)
+
+            def on_run(cmd, work_dir):
+                (work_dir / "rugnux_report.txt").write_text(SAMPLE_REPORT, encoding="utf-8")
+
+            runner = FakeRunner(on_run=on_run)
+            app = Application("Test Rugnux")
+            args = app.parser.parse_args(["--rugnux", "-s", "-d", str(out_dir)])
+            args.images = [str(data_dir / expt.reference)]
+
+            with patch("mxproc.load_multiple", return_value=[expt]):
+                analysis = RUGNUXAnalysis(args, runner=runner)
+                exit_code = analysis.run()
+
+            self.assertEqual(exit_code, 0)
+            self.assertEqual(analysis.workflow, Workflow.SCREEN)
+            self.assertEqual(len(runner.calls), 1)
+            self.assertIn("--no-merge", runner.calls[0][0])
+
+    def test_resume_report_step_reads_disk_without_rerunning_rugnux(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            data_dir = tmp_path / "data"
+            out_dir = tmp_path / "work"
+            data_dir.mkdir()
+            expt = _make_experiment(data_dir)
+
+            def on_run(cmd, work_dir):
+                (work_dir / "rugnux_report.txt").write_text(SAMPLE_REPORT, encoding="utf-8")
+                (work_dir / "rugnux_plot.txt").write_text(SAMPLE_PLOT, encoding="utf-8")
+
+            runner1 = FakeRunner(on_run=on_run)
+            app = Application("Test Rugnux")
+            args1 = app.parser.parse_args(["--rugnux", "-d", str(out_dir)])
+            args1.images = [str(data_dir / expt.reference)]
+            with patch("mxproc.load_multiple", return_value=[expt]):
+                self.assertEqual(RUGNUXAnalysis(args1, runner=runner1).run(), 0)
+
+            (out_dir / "report.html").unlink()
+            runner2 = FakeRunner()
+            args2 = app.parser.parse_args(["--rugnux", "-d", str(out_dir)])
+            exit_code = RUGNUXAnalysis(args2, runner=runner2).run(step="report")
+            self.assertEqual(exit_code, 0)
+            self.assertEqual(len(runner2.calls), 0)
+            self.assertTrue((out_dir / "report.html").exists())
+
+            (out_dir / "rugnux_report.txt").unlink()
+            runner3 = FakeRunner()
+            exit_code = RUGNUXAnalysis(args2, runner=runner3).run(step="report")
+            self.assertEqual(exit_code, 1)
+            self.assertEqual(len(runner3.calls), 0)
 
 
 if __name__ == "__main__":

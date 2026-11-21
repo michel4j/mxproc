@@ -50,41 +50,16 @@ WORKFLOW_DESCRIPTIONS = {
 }
 
 
-class StepType(IntEnum):
-    INITIALIZE = 0
-    SPOTS = 1
-    INDEX = 2
-    STRATEGY = 3
-    INTEGRATE = 4
-    SYMMETRY = 5
-    SCALE = 6
-    EXPORT = 7
-    REPORT = 8
+@dataclass(frozen=True)
+class Step:
+    slug: str
+    description: str
+    method: str | None = None
+    checkpoint: bool = True
 
-    def prev(self):
-        return StepType(max(min(StepType), self - 1))
-
-    def next(self):
-        return StepType(min(max(StepType), self + 1))
-
-    def slug(self):
-        return self.name.lower()
-
-    def desc(self):
-        return STEP_DESCRIPTIONS[self]
-
-
-STEP_DESCRIPTIONS = {
-    StepType.INITIALIZE: 'Initialization',
-    StepType.SPOTS: 'Spot Search',
-    StepType.INDEX: 'Auto-Indexing & Refinement',
-    StepType.STRATEGY: 'Determining Optimal Strategy',
-    StepType.INTEGRATE: 'Integration of Intensities',
-    StepType.SYMMETRY: 'Determining & Applying Symmetry',
-    StepType.SCALE: 'Scaling Intensities',
-    StepType.EXPORT: 'Data Export',
-    StepType.REPORT: 'Reports'
-}
+    @property
+    def method_name(self) -> str:
+        return self.method or self.slug
 
 
 class StateType(IntFlag):

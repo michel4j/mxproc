@@ -1,10 +1,24 @@
 from mxproc import Analysis
+from mxproc.common import Step, Workflow
 from mxproc.log import logger
 from mxproc.engines.dials.parser import DIALSParser
+
+STEP_INITIALIZE = Step("initialize", "Initialization")
+STEP_SPOTS = Step("spots", "Spot Search", method="find_spots")
+STEP_INDEX = Step("index", "Auto-Indexing & Refinement")
+STEP_INTEGRATE = Step("integrate", "Integration of Intensities")
 
 
 class DIALSAnalysis(Analysis):
     prefix = 'dials'
+    workflows = {
+        Workflow.PROCESS: (
+            STEP_INITIALIZE,
+            STEP_SPOTS,
+            STEP_INDEX,
+            STEP_INTEGRATE,
+        ),
+    }
 
     def initialize(self, **kwargs):
         results = {}
@@ -47,18 +61,3 @@ class DIALSAnalysis(Analysis):
             self.runner.run('dials.integrate refined.expt refined.refl', work_dir, desc="Integrating images")
 
         return results
-
-    def strategy(self, **kwargs):
-        pass
-
-    def symmetry(self, **kwargs):
-        pass
-
-    def scale(self, **kwargs):
-        pass
-
-    def export(self, **kwargs):
-        pass
-
-    def report(self, **kwargs):
-        pass

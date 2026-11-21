@@ -6,22 +6,21 @@ import os
 import time
 import importlib
 import logging
-import getpass
 
-from abc import ABC, abstractmethod
+from abc import ABC
 from dataclasses import dataclass, field
 from datetime import datetime
 
 from importlib.metadata import version, PackageNotFoundError
 from pathlib import Path
-from typing import Sequence, Dict, Tuple, Any
+from typing import ClassVar, Mapping, Sequence, Dict, Tuple
 
 import yaml
 
 from mxproc import log
 from mxproc.command import CommandFailed, CommandRunner, SlurmRunner
 from mxproc.common import (
-    StepType, InvalidAnalysisStep, StateType, Result, Workflow, logistic, parse_ranges, fix_permissions,
+    Step, InvalidAnalysisStep, StateType, Result, Workflow, parse_ranges, fix_permissions,
     parse_cluster
 )
 from mxproc.xtal import load_multiple, Experiment, Beam
@@ -30,7 +29,9 @@ from mxproc.log import logger
 __all__ = [
     "Analysis",
     "AnalysisOptions",
-    "Application"
+    "Application",
+    "Step",
+    "peek_checkpoint_engine",
 ]
 
 try:
@@ -38,24 +39,30 @@ try:
 except PackageNotFoundError:
     __version__ = "Dev"
 
-# Links Analysis steps to the next step in the sequence
-WORKFLOWS = {
-    Workflow.SCREEN: {
-        StepType.INITIALIZE: StepType.SPOTS,
-        StepType.SPOTS: StepType.INDEX,
-        StepType.INDEX: StepType.STRATEGY,
-        StepType.STRATEGY: StepType.REPORT,
-    },
-    Workflow.PROCESS: {
-        StepType.INITIALIZE: StepType.SPOTS,
-        StepType.SPOTS: StepType.INDEX,
-        StepType.INDEX: StepType.INTEGRATE,
-        StepType.INTEGRATE: StepType.SYMMETRY,
-        StepType.SYMMETRY: StepType.SCALE,
-        StepType.SCALE: StepType.EXPORT,
-        StepType.EXPORT: StepType.REPORT,
-    }
-}
+
+def _checkpoint_path(directory: Path, step: str | Step | None = None) -> Path:
+    realm = 'latest' if step is None else (step.slug if isinstance(step, Step) else step)
+    return directory / f'{realm}.meta'
+
+
+def peek_checkpoint_engine(directory: Path, step: str | Step | None = None) -> str | None:
+    """
+    Read the owning engine identifier from a checkpoint file if present and readable.
+    Returns None when the checkpoint is missing or unreadable.
+    """
+    meta_file = _checkpoint_path(directory, step)
+    if not meta_file.exists():
+        return None
+    try:
+        with gzip.open(meta_file, 'rb') as handle:
+            meta = yaml.load(handle, yaml.Loader)
+    except Exception:
+        return None
+    if isinstance(meta, dict):
+        engine = meta.get('engine')
+        if isinstance(engine, str) and engine:
+            return engine
+    return None
 
 
 @dataclass
@@ -84,13 +91,13 @@ class AnalysisOptions:
 class Analysis(ABC):
     experiments: Sequence[Experiment]
     options: AnalysisOptions
-    results: dict  # results for each experiment keyed by experiment identifier
+    results: dict  # results for each experiment keyed by experiment identifier, then step slug
     settings: dict  # Settings dictionary can be used for saving and recovering non-experiment specific information
     workflow: Workflow
-    methods: dict  # Dictionary mapping steps to corresponding method
     args: argparse.Namespace  # Contains parameters passed in through the command line.
 
     prefix: str = 'proc'
+    workflows: ClassVar[Mapping[Workflow, Sequence[Step]]] = {}
 
     def __init__(self, args: argparse.Namespace, runner: CommandRunner | None = None):
         """
@@ -123,17 +130,56 @@ class Analysis(ABC):
 
         # workflow
         self.workflow = Workflow.SCREEN if self.options.screen else Workflow.PROCESS
-        self.methods = {
-            StepType.INITIALIZE: self.initialize,
-            StepType.SPOTS: self.find_spots,
-            StepType.INDEX: self.index,
-            StepType.STRATEGY: self.strategy,
-            StepType.INTEGRATE: self.integrate,
-            StepType.SYMMETRY: self.symmetry,
-            StepType.SCALE: self.scale,
-            StepType.EXPORT: self.export,
-            StepType.REPORT: self.report
-        }
+
+    @classmethod
+    def get_steps(cls, workflow: Workflow) -> tuple[Step, ...]:
+        """Return ordered steps for a workflow, or raise InvalidAnalysisStep if unsupported."""
+        steps = cls.workflows.get(workflow)
+        if not steps:
+            supported = ', '.join(wf.name for wf in cls.workflows) or 'none'
+            raise InvalidAnalysisStep(
+                f"Workflow '{workflow.name}' is not supported by engine '{cls.prefix}'. "
+                f"Supported workflows: {supported}."
+            )
+        return tuple(steps)
+
+    @classmethod
+    def resolve_step(cls, workflow: Workflow, step: str | Step | None = None) -> Step:
+        """Resolve a step slug or Step instance within the given workflow."""
+        steps = cls.get_steps(workflow)
+        if step is None:
+            return steps[0]
+        target_slug = step.slug if isinstance(step, Step) else step.strip().lower()
+        for candidate in steps:
+            if candidate.slug == target_slug:
+                return candidate
+        available = ', '.join(s.slug for s in steps)
+        raise InvalidAnalysisStep(
+            f"Step '{target_slug}' is not supported by engine '{cls.prefix}' "
+            f"for workflow '{workflow.name}'. Available steps: {available}."
+        )
+
+    @classmethod
+    def _has_step_in_any_workflow(cls, step: str | Step) -> bool:
+        target_slug = step.slug if isinstance(step, Step) else step.strip().lower()
+        return any(
+            candidate.slug == target_slug
+            for steps in cls.workflows.values()
+            for candidate in steps
+        )
+
+    @classmethod
+    def format_steps(cls) -> str:
+        """Format available workflows and their steps for CLI display."""
+        lines = [f"Engine: {cls.prefix}"]
+        if not cls.workflows:
+            lines.append("  (no workflows defined)")
+            return "\n".join(lines)
+        for workflow, steps in cls.workflows.items():
+            lines.append(f"  {workflow.name} ({workflow.desc()}):")
+            for idx, step in enumerate(steps, start=1):
+                lines.append(f"    {idx}. {step.slug:<12} {step.description}")
+        return "\n".join(lines)
 
     def prepare_directory(self, directory: str) -> Path:
         """
@@ -173,7 +219,7 @@ class Analysis(ABC):
 
     def get_extras(self, args: argparse.Namespace) -> dict:
         """
-        Extract Backend specific Parameters from arguments namespace object
+        Extract engine-specific parameters from arguments namespace object
         :param args: Namespace parsed from command line
         :return: dictionary
         """
@@ -181,9 +227,9 @@ class Analysis(ABC):
 
     def get_options(self, args: argparse.Namespace) -> dict:
         """
-        Extract Parameters from arguments namespace object
+        Extract parameters from arguments namespace object
         :param args: Namespace parsed from command line
-        :return: dictionary suitable for initializing or updating a Options object
+        :return: dictionary suitable for initializing or updating an AnalysisOptions object
         """
 
         options = {
@@ -199,24 +245,43 @@ class Analysis(ABC):
         }
         return {key: value for key, value in options.items() if value}
 
-    def load(self, step: StepType | None = None):
+    def load(self, step: str | Step | None = None):
         """
-        Load an Analysis from a meta file and reset the state to it.
-        :param step: analysis step corresponding to the saved metadata reads the latest meta file if None
+        Load an Analysis from a checkpoint file and reset state to it.
+        :param step: step slug or Step corresponding to the saved checkpoint; reads latest if None
         """
 
-        realm = 'latest' if step is None else step.slug()
-
-        meta_file = self.options.directory / f'{realm}.meta'
+        meta_file = _checkpoint_path(self.options.directory, step)
 
         try:
             with gzip.open(meta_file, 'rb') as handle:  # gzip compressed yaml file
                 meta = yaml.load(handle, yaml.Loader)
 
+            if not isinstance(meta, dict):
+                raise ValueError('Checkpoint payload must be a mapping')
+
+            meta_engine = meta.get('engine')
+            if not meta_engine:
+                raise InvalidAnalysisStep(
+                    'Checkpoint file missing engine metadata (incompatible legacy checkpoint).'
+                )
+            if str(meta_engine).lower() != self.prefix.lower():
+                raise InvalidAnalysisStep(
+                    f"Checkpoint belongs to engine '{meta_engine}', cannot resume with '{self.prefix}'."
+                )
+
             self.options = meta['options']
             self.experiments = meta['experiments']
             self.results = meta['results']
             self.settings = meta['settings']
+
+            meta_workflow = meta.get('workflow')
+            if not self.args.screen and meta_workflow:
+                self.workflow = (
+                    meta_workflow
+                    if isinstance(meta_workflow, Workflow)
+                    else Workflow[str(meta_workflow)]
+                )
 
             # update options with current args
             self.options.update(**self.get_options(self.args))
@@ -224,24 +289,29 @@ class Analysis(ABC):
 
         except FileNotFoundError:
             raise InvalidAnalysisStep('Checkpoint file missing. Must be loaded from working directory.')
-        except (ValueError, TypeError, KeyError):
+        except InvalidAnalysisStep:
+            raise
+        except (ValueError, TypeError, KeyError, OSError):
             raise InvalidAnalysisStep('Checkpoint file corrupted')
 
-    def save(self, step: StepType, backup: bool = False):
+    def save(self, step: Step, backup: bool = False):
         """
-        Save analysis data to file
-        :param backup: Whether to back up existing files, by default overwrite
-        :param step: analysis step corresponding to the saved metadata
+        Save analysis state to a checkpoint file.
+        :param step: Step corresponding to the saved checkpoint
+        :param backup: Whether to back up existing checkpoint file; by default overwrite
         """
         meta = {
+            'engine': self.prefix,
+            'workflow': self.workflow.name,
+            'step': step.slug,
             'options': self.options,
             'experiments': self.experiments,
             'results': self.results,
             'settings': self.settings
         }
 
-        meta_file = self.options.directory / f'{step.slug()}.meta'
-        latest_file = self.options.directory / 'latest.meta'
+        meta_file = _checkpoint_path(self.options.directory, step)
+        latest_file = _checkpoint_path(self.options.directory)
 
         # backup file if needed
         if meta_file.exists() and backup:
@@ -253,56 +323,79 @@ class Analysis(ABC):
         latest_file.unlink(missing_ok=True)
         latest_file.symlink_to(meta_file.name)
 
-    def update_result(self, results: Dict[str, Result], step: StepType):
+    def update_result(self, results: Dict[str, Result] | None, step: Step):
         """
-        Update the results dictionary and save a checkpoint meta file
+        Update the results dictionary and save a checkpoint file.
 
         :param results: dictionary of results keyed by the experiment identifier
-        :param step: AnalysisStep
+        :param step: completed Step
         """
 
-        for identifier, result in results.items():
-            experiment_results = self.results.get(identifier, {})
-            if result.state in [StateType.SUCCESS, StateType.WARNING]:
-                experiment_results.update({step.name: result})
-                self.results[identifier] = experiment_results
+        if results:
+            for identifier, result in results.items():
+                experiment_results = self.results.get(identifier, {})
+                if result.state in (StateType.SUCCESS, StateType.WARNING):
+                    experiment_results[step.slug] = result
+                    self.results[identifier] = experiment_results
 
         self.save(step)
 
-    def get_step_result(self, expt: Experiment, step: StepType) -> Result | None:
+    def get_step_result(self, expt: Experiment, step: str | Step) -> Result | None:
         """
-        Check if a given analysis step was successfully completed for a given experiment
+        Return the saved Result for an experiment and step slug, or None if absent.
         :param expt: the Experiment to check
-        :param step: Analysis step to tests
+        :param step: Step or step slug to look up
         """
-        if step.name in self.results[expt.identifier]:
-            return self.results[expt.identifier][step.name]
-
-    @abstractmethod
-    def score(self, *args, **kwargs) -> float:
-        """
-        Calculate and return a data quality score for the specified experiment
-        """
-        ...
+        slug = step.slug if isinstance(step, Step) else step
+        return self.results.get(expt.identifier, {}).get(slug)
 
     def run(
             self,
-            step: StepType = StepType.INITIALIZE,
-            bootstrap: StepType | None = None,
+            step: str | Step | None = None,
+            bootstrap: str | Step | None = None,
             single: bool = False
     ) -> int:
         """
-        Perform the analysis and gather the harvested results
-        :param bootstrap: analysis step to use as a basis from the requested step. Must be higher than the previous workflow step
-        :param single: Whether to run the full analysis from this step to the end of the workflow
-        :param step: AnalysisStep to run
+        Perform the analysis and gather the harvested results.
+        :param step: starting Step or step slug (defaults to workflow entry step)
+        :param bootstrap: checkpoint step slug/Step to load before resuming; defaults to latest
+        :param single: Whether to run only a single step or continue to the end of the workflow
         :return: valid python exit code, 0 = success, 1 = error, etc
         """
 
         exit_code = 0
-        # If anything other than initialize, load the previous metadata and use that
-        if step != StepType.INITIALIZE:
-            self.load(bootstrap)
+        initial_workflow = self.workflow
+
+        # Validate workflow/step before loading checkpoints so unsupported steps fail loudly.
+        if step is None:
+            steps = self.get_steps(self.workflow)
+            resolved = steps[0]
+            start_idx = 0
+        else:
+            steps = self.get_steps(self.workflow)
+            try:
+                resolved = self.resolve_step(self.workflow, step)
+                start_idx = steps.index(resolved)
+                step_in_initial = True
+            except InvalidAnalysisStep:
+                if self.args.screen or not self._has_step_in_any_workflow(step):
+                    raise
+                step_in_initial = False
+                start_idx = -1
+
+            if not step_in_initial or start_idx > 0:
+                self.load(bootstrap)
+                try:
+                    steps = self.get_steps(self.workflow)
+                    resolved = self.resolve_step(self.workflow, step)
+                except InvalidAnalysisStep:
+                    if step_in_initial:
+                        self.workflow = initial_workflow
+                        steps = self.get_steps(self.workflow)
+                        resolved = self.resolve_step(self.workflow, step)
+                    else:
+                        raise
+                start_idx = steps.index(resolved)
 
         start_time = time.time()
         header = f'MX Auto Proces (version: {__version__})'
@@ -310,129 +403,44 @@ class Analysis(ABC):
         logger.banner(header)
         logger.banner(sub_header, overline=False, line='-')
         try:
-            while step is not None:
-                step_method = self.methods.get(step)
+            for current_step in steps[start_idx:]:
+                step_method = getattr(self, current_step.method_name)
                 try:
-                    logger.info_value(step.desc(), '', spacer='-')
+                    logger.info_value(current_step.description, '', spacer='-')
                     results = step_method()
                 except CommandFailed as err:
-                    logger.error(f'Failed at {step.name}: {err}. Aborting!')
+                    logger.error(f'Failed at {current_step.slug}: {err}. Aborting!')
                     exit_code = 1
                     break
                 else:
-                    # REPORTING step does not have results
-                    if step != StepType.REPORT and results:
-                        self.update_result(results, step)
+                    if current_step.checkpoint:
+                        self.update_result(results, current_step)
 
-                # select the next step in the workflow
-                step = None if single else WORKFLOWS[self.workflow].get(step)
+                if single:
+                    break
         finally:
-            os.scandir(self.options.directory)  # reload directory cache
-            fix_permissions(self.options.directory)
+            if self.options.directory.exists():
+                with os.scandir(self.options.directory):  # reload directory cache
+                    pass
+                fix_permissions(self.options.directory)
 
         used_time = time.strftime('%H:%M:%S', time.gmtime(time.time() - start_time))
         logger.banner(f'Processing Duration: {used_time}', line='-')
         return exit_code
 
-    @abstractmethod
-    def initialize(self, **kwargs):
-        """
-        Initialize the analysis of all experiments, should be ready for spot finding after this.
-        :param kwargs: keyword argument to tweak initialization
-        """
-        ...
-
-    @abstractmethod
-    def find_spots(self, **kwargs) -> Dict[str, Result]:
-        """
-        Find spots, and prepare for indexing of all experiments
-        :param kwargs: keyword argument to tweak spot search
-        :return: a dictionary, the keys are experiment identifiers and values are dictionaries containing
-        harvested results from each dataset.
-        """
-        ...
-
-    @abstractmethod
-    def index(self, **kwargs) -> Dict[str, Result]:
-        """
-        Perform indexing and refinement of all experiments
-        :param kwargs: keyword argument to tweak indexing
-        :return: a dictionary, the keys are experiment identifiers and values are dictionaries containing
-        harvested results from each dataset.
-        """
-        ...
-
-    @abstractmethod
-    def strategy(self, **kwargs) -> Dict[str, Result]:
-        """
-        Perform Strategy determination and refinement of all experiments
-        :param kwargs: keyword argument to tweak indexing
-        :return: a dictionary, the keys are experiment identifiers and values are dictionaries containing
-        harvested results from each dataset.
-        """
-        ...
-
-    @abstractmethod
-    def integrate(self, **kwargs) -> Dict[str, Result]:
-        """
-        Perform integration of all experiments.
-        :param kwargs: keyword arguments for tweaking the integration settings.
-        :return: a dictionary, the keys are experiment identifiers and values are dictionaries containing
-        harvested results from each dataset.
-        """
-        ...
-
-    @abstractmethod
-    def symmetry(self, **kwargs) -> Dict[str, Result]:
-        """
-        Determination of Laue group symmetry and reindexing to the selected symmetry for all experiments.
-        :param kwargs: keyword arguments for tweaking the symmetry
-        :return: a dictionary, the keys are experiment identifiers and values are dictionaries containing
-        harvested results from each dataset.
-        """
-        ...
-
-    @abstractmethod
-    def scale(self, **kwargs) -> Dict[str, Result]:
-        """
-        performs scaling on integrated datasets for all experiments
-        :param kwargs: keyword arguments for tweaking the scaling
-        :return: a dictionary, the keys are experiment identifiers and values are dictionaries containing
-        harvested results from each dataset.
-        """
-        ...
-
-    @abstractmethod
-    def export(self, **kwargs) -> Dict[str, Result]:
-        """
-        Export the results of processing into various formats for all experiments
-        :param kwargs: keyword arguments for tweaking the export
-        :return: a dictionary, the keys are experiment identifiers and values are dictionaries containing
-        harvested results from each dataset.
-        """
-        ...
-
-    @abstractmethod
-    def report(self, **kwargs) -> Dict[str, Result]:
-        """
-        Generate reports of the analysis in TXT and HTML formats for all experiments.
-        :param kwargs: keyword arguments for tweaking the reporting
-        :return: a dictionary, the keys are experiment identifiers and values are dictionaries containing
-        harvested results from each dataset.
-        """
-        ...
-
 
 class Application:
-    def __init__(self, description: str, step: StepType = StepType.INITIALIZE):
+    def __init__(self, description: str, step: str | None = None, screen: bool = False):
         self.parser = argparse.ArgumentParser(description=f'MX AutoProcess: {description}')
         # main arguments
         self.parser.add_argument('images', nargs='*', help='Datasets to process. One frame per dataset.')
-        self.parser.add_argument('-s', '--screen', help='Characterization and Strategy', action="store_true")
+        self.parser.add_argument('-s', '--screen', help='Characterization and Strategy', action="store_true", default=screen)
         self.parser.add_argument('-a', '--anom', help="Friedel's law False", action="store_true")
         self.parser.add_argument('-d', '--dir', type=str, help="Working Directory", default="")
         self.parser.add_argument('-m', '--multi', help='Separate datasets scaled together', action="store_true")
         self.parser.add_argument('-1', '--single', action='store_true', default=False, help="Stop after a single step")
+        self.parser.add_argument('--step', type=str, default=step, help="Step slug to start or resume from")
+        self.parser.add_argument('--list-steps', action='store_true', default=False, help="List steps for the selected engine and exit")
         self.parser.add_argument('-c', '--beam-center', type=float, nargs=2, help="Override Beam Center")
 
         # arguments for fine-tuning
@@ -450,13 +458,13 @@ class Application:
         self.parser.add_argument('--beam-size', type=float, help="Beam aperture size")
         self.parser.add_argument('--beam-fwhm', type=float, nargs=2, help="Beam FWHM")
 
-        # engine selection
+        # engine selection (None when omitted so resume can auto-detect engine from latest checkpoint)
         group = self.parser.add_mutually_exclusive_group()
-        group.add_argument("--xds", action="store_const", const="XDS", dest="use", help="Use XDS Backend")
-        group.add_argument("--dials", action="store_const", const="DIALS", dest="use", help="Use DIALS Backend")
-        group.add_argument("--rugnux", action="store_const", const="RUGNUX", dest="use", help="Use Rugnux Backend")
-        self.parser.set_defaults(use="XDS")
-        
+        group.add_argument("--xds", action="store_const", const="XDS", dest="use", help="Use XDS Engine")
+        group.add_argument("--dials", action="store_const", const="DIALS", dest="use", help="Use DIALS Engine")
+        group.add_argument("--rugnux", action="store_const", const="RUGNUX", dest="use", help="Use Rugnux Engine")
+        self.parser.set_defaults(use=None)
+
         self.step = step
 
         self.parser.add_argument(
@@ -464,33 +472,66 @@ class Application:
         )
 
     @staticmethod
-    def get_engine(args: argparse.Namespace) -> Any:
+    def resolve_engine_name(args: argparse.Namespace) -> str:
         """
-        Determine backend engine Analysis class based on engine name
-        :param args:  Parsed arguments
-        :return:  Analysis instance
+        Determine engine name from explicit CLI flag, latest checkpoint on resume, or default XDS.
         """
-        name = args.use.upper()
-        class_name = f'{name}Analysis'
-        module_name = f'mxproc.engines.{name.lower()}'
+        if args.use:
+            return args.use.upper()
+        if not args.images:
+            detected = peek_checkpoint_engine(Path(args.dir).absolute())
+            if detected:
+                return detected.upper()
+        return "XDS"
+
+    @staticmethod
+    def get_engine_class(name: str) -> type[Analysis] | None:
+        """Load and return the Analysis subclass for an engine name without instantiating it."""
+        engine_name = name.upper()
+        class_name = f'{engine_name}Analysis'
+        module_name = f'mxproc.engines.{engine_name.lower()}'
         try:
             module = importlib.import_module(module_name)
-            cls = getattr(module, class_name)
-            proc = cls(args)
-        except AttributeError as err:
-            proc = None
-            logger.error(f'Backend analysis engine {name} not found!')
+            return getattr(module, class_name)
+        except (ImportError, AttributeError) as err:
+            logger.error(f'Analysis engine {engine_name} not found!')
             logger.exception(err)
-        return proc
+            return None
 
-    def run(self, single: bool = False):
+    @staticmethod
+    def get_engine(args: argparse.Namespace) -> Analysis | None:
         """
-        Parse arguments and run analysis application
+        Determine and instantiate the Analysis engine class from parsed arguments.
+        :param args: Parsed arguments
+        :return: Analysis instance or None
+        """
+        name = Application.resolve_engine_name(args)
+        cls = Application.get_engine_class(name)
+        if cls is None:
+            return None
+        return cls(args)
+
+    def run(self, single: bool = False, argv: Sequence[str] | None = None) -> int:
+        """
+        Parse arguments and run analysis application.
         :param single: Run only one step
+        :param argv: Optional argument list (defaults to sys.argv)
         """
         log.log_to_console(logging.DEBUG)
-        args = self.parser.parse_args()
+        args = self.parser.parse_args(argv)
+        if args.list_steps:
+            name = self.resolve_engine_name(args)
+            cls = self.get_engine_class(name)
+            if cls is None:
+                return 1
+            print(cls.format_steps())
+            return 0
+
         proc = self.get_engine(args)
-        if proc is not None:
-            return proc.run(step=self.step, single=(single or args.single))
-        return 1
+        if proc is None:
+            return 1
+        try:
+            return proc.run(step=args.step, single=(single or args.single))
+        except InvalidAnalysisStep as err:
+            logger.error(str(err))
+            return 1

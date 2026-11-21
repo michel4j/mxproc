@@ -5,22 +5,24 @@ from pathlib import Path
 
 from mxproc import Application
 from mxproc.command import LocalRunner, SlurmRunner
-from mxproc.common import StepType
 
 
-def _run_application(description: str, step: StepType | None = None, single: bool = False) -> int:
+def _run_application(
+    description: str,
+    step: str | None = None,
+    single: bool = False,
+    screen: bool = False,
+) -> int:
     """
     Helper to instantiate and run an Application. Uses `sys.argv` for CLI arguments.
 
     :param description: description passed to Application
-    :param step: optional StepType to initialize Application with. If None use default.
+    :param step: optional step slug to start/resume at. If None uses the engine's entry step.
     :param single: True to run only a single step, False to run all subsequent steps
+    :param screen: True to default to Workflow.SCREEN
     :return: exit code from Application.run()
     """
-    if step is None:
-        app = Application(description=description)
-    else:
-        app = Application(description=description, step=step)
+    app = Application(description=description, step=step, screen=screen)
     return app.run(single=single)
 
 
@@ -28,17 +30,17 @@ def _run_application(description: str, step: StepType | None = None, single: boo
 
 def auto_index() -> int:
     """Run the auto.index console entrypoint using sys.argv."""
-    return _run_application("Auto-Index Dataset", StepType.INDEX)
+    return _run_application("Auto-Index Dataset", "index")
 
 
 def auto_init() -> int:
     """Run the auto.init console entrypoint using sys.argv."""
-    return _run_application('Initialize a dataset processing', StepType.INITIALIZE, single=True)
+    return _run_application('Initialize a dataset processing', "initialize", single=True)
 
 
 def auto_integrate() -> int:
     """Run the auto.integrate console entrypoint using sys.argv."""
-    return _run_application("Integrate Datasets", StepType.INTEGRATE)
+    return _run_application("Integrate Datasets", "integrate")
 
 
 def auto_process() -> int:
@@ -48,22 +50,22 @@ def auto_process() -> int:
 
 def auto_scale() -> int:
     """Run the auto.scale console entrypoint using sys.argv."""
-    return _run_application("Scale Datasets", StepType.SCALE)
+    return _run_application("Scale Datasets", "scale")
 
 
 def auto_spots() -> int:
     """Run the auto.spots console entrypoint using sys.argv."""
-    return _run_application("Find Strong Spots", StepType.SPOTS, single=True)
+    return _run_application("Find Strong Spots", "spots", single=True)
 
 
 def auto_strategy() -> int:
     """Run the auto.strategy console entrypoint using sys.argv."""
-    return _run_application("Screen and Determine Strategy", StepType.STRATEGY)
+    return _run_application("Screen and Determine Strategy", "strategy", screen=True)
 
 
 def auto_symmetry() -> int:
     """Run the auto.symmetry console entrypoint using sys.argv."""
-    return _run_application("Determine and Apply Symmetry", StepType.SYMMETRY)
+    return _run_application("Determine and Apply Symmetry", "symmetry")
 
 
 def auto_xds() -> int:
@@ -95,5 +97,3 @@ def auto_xds() -> int:
         LocalRunner().run(args.command, Path.cwd(), logfile=None, show_progress=False)
 
     return 0
-
-
