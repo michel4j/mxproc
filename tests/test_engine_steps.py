@@ -227,6 +227,59 @@ class EngineStepContractTests(unittest.TestCase):
                 xds_engine.load()
             self.assertIn("missing engine metadata", str(ctx.exception))
 
+    def test_multi_option_sets_merge_false_and_preserves_across_resume(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            data_dir = tmp_path / "data"
+            work_merged = tmp_path / "merged"
+            work_separate = tmp_path / "separate"
+            data_dir.mkdir()
+            expt1 = _make_experiment(data_dir, "ds1")
+            expt2 = _make_experiment(data_dir, "ds2")
+            images = [str(data_dir / expt1.reference), str(data_dir / expt2.reference)]
+
+            app = Application("Multi Test")
+
+            # Single experiment: merge=False, multi=False
+            single_args = app.parser.parse_args(["-d", str(tmp_path / "single")])
+            single_args.images = [images[0]]
+            with patch("mxproc.load_multiple", return_value=[expt1]):
+                single_engine = CustomTwoStepAnalysis(single_args, runner=FakeRunner())
+            self.assertFalse(single_engine.options.merge)
+            self.assertFalse(single_engine.options.multi)
+
+            # Multi experiment default: merge=True, multi=False
+            merged_args = app.parser.parse_args(["-d", str(work_merged)])
+            merged_args.images = images
+            with patch("mxproc.load_multiple", return_value=[expt1, expt2]):
+                merged_engine = CustomTwoStepAnalysis(merged_args, runner=FakeRunner())
+                self.assertTrue(merged_engine.options.merge)
+                self.assertFalse(merged_engine.options.multi)
+                self.assertEqual(merged_engine.run(single=True), 0)
+
+            # Resuming merged run with -m switches to merge=False, multi=True
+            override_args = app.parser.parse_args(["-m", "-d", str(work_merged)])
+            override_engine = CustomTwoStepAnalysis(override_args, runner=FakeRunner())
+            override_engine.load()
+            self.assertFalse(override_engine.options.merge)
+            self.assertTrue(override_engine.options.multi)
+
+            # Multi experiment with -m: merge=False, multi=True
+            sep_args = app.parser.parse_args(["-m", "-d", str(work_separate)])
+            sep_args.images = images
+            with patch("mxproc.load_multiple", return_value=[expt1, expt2]):
+                sep_engine = CustomTwoStepAnalysis(sep_args, runner=FakeRunner())
+                self.assertFalse(sep_engine.options.merge)
+                self.assertTrue(sep_engine.options.multi)
+                self.assertEqual(sep_engine.run(single=True), 0)
+
+            # Resuming -m run without re-passing -m preserves merge=False, multi=True
+            resume_args = app.parser.parse_args(["-d", str(work_separate)])
+            resumed = CustomTwoStepAnalysis(resume_args, runner=FakeRunner())
+            resumed.load()
+            self.assertFalse(resumed.options.merge)
+            self.assertTrue(resumed.options.multi)
+
 
 class CLIStepTests(unittest.TestCase):
     def test_auto_detects_engine_on_resume_when_flag_omitted(self):

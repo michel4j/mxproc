@@ -264,6 +264,40 @@ class RugnuxAnalysisTests(unittest.TestCase):
             self.assertIn("ds1_master.h5", cmd)
             self.assertIn("ds2_master.h5", cmd)
 
+    def test_multi_separate_runs_rugnux_per_experiment(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            data_dir = tmp_path / "data"
+            out_dir = tmp_path / "work"
+            data_dir.mkdir()
+            expt1 = _make_experiment(data_dir, "ds1", "ds1_master.h5")
+            expt2 = _make_experiment(data_dir, "ds2", "ds2_master.h5")
+
+            def on_run(cmd, work_dir):
+                (work_dir / "rugnux_report.txt").write_text(SAMPLE_REPORT, encoding="utf-8")
+                (work_dir / "rugnux.mtz").write_text("mtz", encoding="utf-8")
+
+            runner = FakeRunner(on_run=on_run)
+            app = Application("Test Rugnux")
+            args = app.parser.parse_args(["--rugnux", "-m", "-d", str(out_dir)])
+            args.images = [str(data_dir / expt1.reference), str(data_dir / expt2.reference)]
+
+            with patch("mxproc.load_multiple", return_value=[expt1, expt2]):
+                analysis = RUGNUXAnalysis(args, runner=runner)
+                exit_code = analysis.run()
+
+            self.assertEqual(exit_code, 0)
+            self.assertFalse(analysis.options.merge)
+            self.assertTrue(analysis.options.multi)
+            self.assertEqual(len(runner.calls), 2)
+            self.assertEqual({call[1] for call in runner.calls}, {out_dir / "ds1", out_dir / "ds2"})
+            self.assertTrue((out_dir / "ds1" / "report.html").exists())
+            self.assertTrue((out_dir / "ds2" / "report.html").exists())
+            ds1_report = json.loads((out_dir / "ds1" / "report.json").read_text(encoding="utf-8"))
+            ds2_report = json.loads((out_dir / "ds2" / "report.json").read_text(encoding="utf-8"))
+            self.assertEqual(ds1_report["outputs"]["mtz"], "ds1/rugnux.mtz")
+            self.assertEqual(ds2_report["outputs"]["mtz"], "ds2/rugnux.mtz")
+
     def test_screen_workflow_passes_no_merge(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)

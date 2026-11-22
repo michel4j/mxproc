@@ -73,7 +73,7 @@ class AnalysisOptions:
     screen: bool = False
     anomalous: bool = False
     optimize: bool = False
-    merge: bool = True
+    merge: bool = False
     multi: bool = False
     extras: dict = field(default_factory=dict)
     beam_flux: float = 1e12
@@ -225,10 +225,11 @@ class Analysis(ABC):
         """
         return {}
 
-    def get_options(self, args: argparse.Namespace) -> dict:
+    def get_options(self, args: argparse.Namespace, *, resuming: bool = False) -> dict:
         """
         Extract parameters from arguments namespace object
         :param args: Namespace parsed from command line
+        :param resuming: True when updating options loaded from a checkpoint so omitted flags don't clobber saved state
         :return: dictionary suitable for initializing or updating an AnalysisOptions object
         """
 
@@ -237,13 +238,22 @@ class Analysis(ABC):
             'screen': args.screen,
             'anomalous': args.anom,
             'optimize': args.optimize,
-            'merge': len(self.experiments) > 1 and not args.multi,
-            'multi': len(self.experiments) > 1 and args.multi,
             'beam_flux': args.beam_flux,
             'beam_fwhm': args.beam_fwhm,
             'beam_size': args.beam_size,
         }
-        return {key: value for key, value in options.items() if value}
+        result = {key: value for key, value in options.items() if value}
+        if len(self.experiments) > 1:
+            if args.multi:
+                result['merge'] = False
+                result['multi'] = True
+            elif not resuming:
+                result['merge'] = True
+                result['multi'] = False
+        elif not resuming:
+            result['merge'] = False
+            result['multi'] = False
+        return result
 
     def load(self, step: str | Step | None = None):
         """
@@ -284,7 +294,7 @@ class Analysis(ABC):
                 )
 
             # update options with current args
-            self.options.update(**self.get_options(self.args))
+            self.options.update(**self.get_options(self.args, resuming=True))
             self.options.extras.update(**self.get_extras(self.args))
 
         except FileNotFoundError:

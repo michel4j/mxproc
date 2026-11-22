@@ -1,6 +1,6 @@
 # Engine-Owned Processing Steps
 
-Processing engines in `mxproc` have fundamentally different execution granularities: XDS decomposes reduction into eight distinct stages (`initialize` through `report`), DIALS has its own multi-command sequence, while Rugnux executes end-to-end processing in a single binary invocation. Previously, `mxproc` forced every engine onto a shared global `StepType` enum and nine abstract methods on `Analysis`, causing monolithic engines like Rugnux to fabricate fake intermediate steps and partially implemented engines like DIALS to carry empty stub methods.
+Processing engines in `mxproc` have fundamentally different execution granularities: XDS decomposes reduction into eight distinct steps (`initialize` through `report`), DIALS has its own multi-command sequence, while Rugnux executes end-to-end processing in a single binary invocation. Previously, `mxproc` forced every engine onto a shared global `StepType` enum and nine abstract methods on `Analysis`, causing monolithic engines like Rugnux to fabricate fake intermediate steps and partially implemented engines like DIALS to carry empty stub methods.
 
 We decided to remove the global `StepType` enum and fixed workflow transition map, and instead have each engine declare its own ordered `Step` sequence per supported `Workflow` (`PROCESS`, `SCREEN`) as class-level metadata on `Analysis`.
 

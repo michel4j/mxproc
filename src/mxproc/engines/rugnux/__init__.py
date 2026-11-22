@@ -273,7 +273,9 @@ class RUGNUXAnalysis(Analysis):
         for expt in self.experiments:
             work_dir = self._run_dir_for(expt)
             rep, plot = self._get_outputs_for(expt)
+            expt_res = self.get_step_result(expt, STEP_PROCESS)
+            expt_outputs = expt_res.get("outputs", outputs) if expt_res else outputs
             report_dict = build_report(rep, plot, directory=work_dir)
-            reporting.save_report(report_dict, work_dir, outputs=outputs)
+            reporting.save_report(report_dict, work_dir, outputs=expt_outputs)
             html_path = work_dir / "report.html"
             logger.info(f"- HTML report: {short_path(html_path, self.options.directory.parent)}")
