@@ -89,19 +89,21 @@ class RUGNUXAnalysis(Analysis):
             "no_merge": self.workflow == Workflow.SCREEN,
         }
 
-    def _load_outputs(self, work_dir: Path) -> tuple[RugnuxReport, PlotTable | None]:
-        report_path = work_dir / f"{self.prefix}_report.txt"
+    def _load_outputs(self, work_dir: Path, prefix=None) -> tuple[RugnuxReport, PlotTable | None]:
+        prefix = prefix or self.prefix
+        report_path = work_dir / f"{prefix}_report.txt"
         if not report_path.is_file():
             raise CommandFailed(f"Rugnux report file missing: {report_path}")
         rep = parse_report(report_path)
-        plot_path = work_dir / f"{self.prefix}_plot.txt"
+        plot_path = work_dir / f"{prefix}_plot.txt"
         plot = parse_plot(plot_path) if plot_path.is_file() else None
         return rep, plot
 
-    def _collect_outputs(self, run_dir: Path) -> dict[str, str]:
+    def _collect_outputs(self, run_dir: Path, prefix=None) -> dict[str, str]:
+        prefix = prefix or self.prefix
         outputs: dict[str, str] = {}
         for key, template in OUTPUT_CANDIDATES:
-            filename = template.format(prefix=self.prefix)
+            filename = template.format(prefix=prefix)
             path = run_dir / filename
             if path.exists():
                 outputs[key] = str(short_path(path, self.options.directory))
@@ -173,7 +175,6 @@ class RUGNUXAnalysis(Analysis):
 
     def process(self, **kwargs) -> Dict[str, Result]:
         cmd_kwargs = self._build_command_args()
-        report_name = f"{self.prefix}_report.txt"
         self._reports = {}
 
         if self.options.merge and len(self.experiments) > 1:
@@ -181,18 +182,22 @@ class RUGNUXAnalysis(Analysis):
             inputs = [expt.directory / expt.reference for expt in self.experiments]
             cmd = build_rugnux_command(inputs, **cmd_kwargs)
             names = ", ".join(expt.name for expt in self.experiments)
+            name = "_".join(expt.name for expt in self.experiments)
+            report_name = f"{name}_report.txt"
             self.runner.run(
                 cmd,
                 work_dir,
                 desc=f"Running Rugnux on {names}",
                 check_files=[report_name],
             )
-            parsed = self._load_outputs(work_dir)
+            parsed = self._load_outputs(work_dir, prefix=name)
             for expt in self.experiments:
                 self._reports[expt.identifier] = parsed
         else:
             for expt in self.experiments:
+                cmd_kwargs['prefix'] = expt.name
                 work_dir = self._run_dir_for(expt)
+                report_name = f"{expt.name}_report.txt"
                 cmd = build_rugnux_command([expt.directory / expt.reference], **cmd_kwargs)
                 self.runner.run(
                     cmd,
@@ -200,7 +205,7 @@ class RUGNUXAnalysis(Analysis):
                     desc=f"{expt.name}: Running Rugnux",
                     check_files=[report_name],
                 )
-                self._reports[expt.identifier] = self._load_outputs(work_dir)
+                self._reports[expt.identifier] = self._load_outputs(work_dir, prefix=expt.name)
 
         results: Dict[str, Result] = {}
         all_outputs: dict[str, str] = {}
@@ -251,7 +256,7 @@ class RUGNUXAnalysis(Analysis):
         if expt.identifier in self._reports:
             return self._reports[expt.identifier]
         work_dir = self._run_dir_for(expt)
-        parsed = self._load_outputs(work_dir)
+        parsed = self._load_outputs(work_dir, prefix=expt.name)
         self._reports[expt.identifier] = parsed
         return parsed
 
